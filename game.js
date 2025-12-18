@@ -273,7 +273,7 @@ function setupSpeechRecognition() {
             game.speechRecognition.permissionDenied = true;
         }
     } else {
-        console.log('⚠️ Speech recognition not supported in this browser');
+        console.log('⚠️ Speech recognition not supported in this browser - use Chrome for best experience');
         game.speechRecognition.notSupported = true;
     }
 }
@@ -316,7 +316,7 @@ function startSpeechRecognition() {
 // Manual function to request microphone permission and start speech recognition
 function requestSpeechPermission() {
     if (game.speechRecognition.notSupported) {
-        alert('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari for voice features.');
+        alert('Speech recognition is not supported in this browser. Please use Chrome (recommended), Edge, or Safari for voice features. Firefox does not support speech recognition.');
         return;
     }
     
@@ -645,6 +645,13 @@ function setupControls() {
             return; // Don't process movement when game over
         }
         
+        // Check for stop game command (Shift+S)
+        if (e.key.toLowerCase() === 's' && e.shiftKey) {
+            showLanding();
+            e.preventDefault();
+            return;
+        }
+        
         // Normal game controls
         switch(e.key.toLowerCase()) {
             case 'arrowup':
@@ -665,6 +672,11 @@ function setupControls() {
             case 'arrowright':
             case 'd':
                 game.keys.right = true;
+                e.preventDefault();
+                break;
+            case 'escape':
+                // Stop game and return to landing screen
+                showLanding();
                 e.preventDefault();
                 break;
         }
@@ -1467,6 +1479,7 @@ function render() {
     // Controls instruction
     ctx.fillStyle = '#666';
     ctx.font = '12px Arial';
-    ctx.fillText('Use WASD or Arrow Keys to move', 10, canvas.height - 25);
-    ctx.fillText('Stay in the green Safe Zone!', 10, canvas.height - 10);
+    ctx.fillText('Use WASD or Arrow Keys to move | Shift+S or ESC to stop', 10, canvas.height - 40);
+    ctx.fillText('Stay in the green Safe Zone! Use Chrome for voice features.', 10, canvas.height - 25);
+    ctx.fillText('Firefox does not support speech recognition.', 10, canvas.height - 10);
 }

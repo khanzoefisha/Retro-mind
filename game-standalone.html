@@ -418,8 +418,8 @@
                     alert('Speech recognition failed to initialize. Please refresh the page and allow microphone access.');
                 }
             } else {
-                console.log('⚠️ Speech recognition not supported in this browser');
-                alert('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari for voice features.');
+                console.log('⚠️ Speech recognition not supported in this browser - use Chrome for best experience');
+                alert('Speech recognition is not supported in this browser. Please use Chrome (recommended), Edge, or Safari for voice features. Firefox does not support speech recognition.');
             }
         }
 
@@ -752,6 +752,13 @@
                     return; // Don't process movement when game over
                 }
                 
+                // Check for stop game command (Shift+S)
+                if (e.key.toLowerCase() === 's' && e.shiftKey) {
+                    showLanding();
+                    e.preventDefault();
+                    return;
+                }
+                
                 // Normal game controls
                 switch(e.key.toLowerCase()) {
                     case 'arrowup':
@@ -772,6 +779,11 @@
                     case 'arrowright':
                     case 'd':
                         game.keys.right = true;
+                        e.preventDefault();
+                        break;
+                    case 'escape':
+                        // Stop game and return to landing screen
+                        showLanding();
                         e.preventDefault();
                         break;
                 }
@@ -1378,7 +1390,9 @@
             // Controls instruction
             ctx.fillStyle = '#666';
             ctx.font = '12px Arial';
-            ctx.fillText('Use WASD or Arrow Keys to move', 10, canvas.height - 10);
+            ctx.fillText('Use WASD or Arrow Keys to move | Shift+S or ESC to stop', 10, canvas.height - 40);
+            ctx.fillText('Stay in the green Safe Zone! Use Chrome for voice features.', 10, canvas.height - 25);
+            ctx.fillText('Firefox does not support speech recognition.', 10, canvas.height - 10);
         }
         
         }); // End DOMContentLoaded
