@@ -180,11 +180,25 @@
         const game = {
             running: false,
             aiEnabled: true,
+            score: 0,
             player: {
                 x: canvas.width / 2,
                 y: canvas.height / 2,
                 size: 20,
+                color: '#00ff00',
+                speed: 5
+            },
+            target: {
+                x: Math.random() * (canvas.width - 40) + 20,
+                y: Math.random() * (canvas.height - 40) + 20,
+                size: 15,
                 color: '#00ff00'
+            },
+            keys: {
+                up: false,
+                down: false,
+                left: false,
+                right: false
             }
         };
 
@@ -214,14 +228,64 @@
         function initGame() {
             try {
                 game.running = true;
+                setupControls();
                 gameLoop();
                 console.log('Game initialized successfully');
                 if (game.aiEnabled) {
-                    console.log('AI features are active');
+                    console.log('AI Coach is active - providing guidance');
                 }
             } catch (error) {
                 console.error('Game initialization failed:', error);
             }
+        }
+
+        // Setup keyboard controls
+        function setupControls() {
+            document.addEventListener('keydown', (e) => {
+                switch(e.key.toLowerCase()) {
+                    case 'arrowup':
+                    case 'w':
+                        game.keys.up = true;
+                        e.preventDefault();
+                        break;
+                    case 'arrowdown':
+                    case 's':
+                        game.keys.down = true;
+                        e.preventDefault();
+                        break;
+                    case 'arrowleft':
+                    case 'a':
+                        game.keys.left = true;
+                        e.preventDefault();
+                        break;
+                    case 'arrowright':
+                    case 'd':
+                        game.keys.right = true;
+                        e.preventDefault();
+                        break;
+                }
+            });
+
+            document.addEventListener('keyup', (e) => {
+                switch(e.key.toLowerCase()) {
+                    case 'arrowup':
+                    case 'w':
+                        game.keys.up = false;
+                        break;
+                    case 'arrowdown':
+                    case 's':
+                        game.keys.down = false;
+                        break;
+                    case 'arrowleft':
+                    case 'a':
+                        game.keys.left = false;
+                        break;
+                    case 'arrowright':
+                    case 'd':
+                        game.keys.right = false;
+                        break;
+                }
+            });
         }
 
         // Main game loop
@@ -242,32 +306,77 @@
         function update() {
             frameCount++;
             
-            if (game.aiEnabled) {
-                // AI reasoning: Analyze player position
-                if (frameCount % 60 === 0) { // Every second
-                    const centerDistance = Math.sqrt(
-                        Math.pow(game.player.x - canvas.width/2, 2) + 
-                        Math.pow(game.player.y - canvas.height/2, 2)
-                    );
-                    
-                    if (centerDistance < 50) {
-                        aiThoughts.push("Player is centered - optimal position");
-                    } else {
-                        aiThoughts.push("Player off-center - suggesting movement");
-                    }
-                    
-                    // Keep only last 3 thoughts
-                    if (aiThoughts.length > 3) {
-                        aiThoughts.shift();
-                    }
-                    
-                    console.log('AI Analysis:', aiThoughts[aiThoughts.length - 1]);
-                }
-                
-                // AI-enhanced player movement (subtle animation)
-                game.player.x += Math.sin(frameCount * 0.02) * 0.5;
-                game.player.y += Math.cos(frameCount * 0.03) * 0.3;
+            // Handle player movement
+            if (game.keys.up && game.player.y > game.player.size/2) {
+                game.player.y -= game.player.speed;
             }
+            if (game.keys.down && game.player.y < canvas.height - game.player.size/2) {
+                game.player.y += game.player.speed;
+            }
+            if (game.keys.left && game.player.x > game.player.size/2) {
+                game.player.x -= game.player.speed;
+            }
+            if (game.keys.right && game.player.x < canvas.width - game.player.size/2) {
+                game.player.x += game.player.speed;
+            }
+            
+            // Check collision with target (green circle)
+            const distanceToTarget = Math.sqrt(
+                Math.pow(game.player.x - game.target.x, 2) + 
+                Math.pow(game.player.y - game.target.y, 2)
+            );
+            
+            if (distanceToTarget < (game.player.size/2 + game.target.size/2)) {
+                game.score++;
+                // Spawn new target
+                game.target.x = Math.random() * (canvas.width - 40) + 20;
+                game.target.y = Math.random() * (canvas.height - 40) + 20;
+                console.log('Target hit! Score:', game.score);
+            }
+            
+            // AI Coach Analysis
+            if (game.aiEnabled && frameCount % 60 === 0) { // Every second
+                aiCoachAnalysis();
+            }
+        }
+
+        // AI Coach provides guidance
+        function aiCoachAnalysis() {
+            const edgeThreshold = 50;
+            const dangerZones = [];
+            
+            // Check for danger zones (near edges)
+            if (game.player.x < edgeThreshold) dangerZones.push("left edge");
+            if (game.player.x > canvas.width - edgeThreshold) dangerZones.push("right edge");
+            if (game.player.y < edgeThreshold) dangerZones.push("top edge");
+            if (game.player.y > canvas.height - edgeThreshold) dangerZones.push("bottom edge");
+            
+            // Distance to target
+            const distanceToTarget = Math.sqrt(
+                Math.pow(game.player.x - game.target.x, 2) + 
+                Math.pow(game.player.y - game.target.y, 2)
+            );
+            
+            let coachMessage = "";
+            
+            if (dangerZones.length > 0) {
+                coachMessage = `⚠️ DANGER ZONE: Near ${dangerZones.join(", ")}`;
+            } else if (distanceToTarget < 100) {
+                coachMessage = "🎯 Close to target - good positioning!";
+            } else if (distanceToTarget > 200) {
+                coachMessage = "🏃 Target is far - move closer";
+            } else {
+                coachMessage = "✅ Good position - keep moving";
+            }
+            
+            aiThoughts.push(coachMessage);
+            
+            // Keep only last 3 thoughts
+            if (aiThoughts.length > 3) {
+                aiThoughts.shift();
+            }
+            
+            console.log('AI Coach:', coachMessage);
         }
 
         // Render game
@@ -276,7 +385,27 @@
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
-            // Draw player
+            // Draw danger zones (red areas near edges)
+            if (game.aiEnabled) {
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.1)';
+                const dangerZone = 50;
+                // Top danger zone
+                ctx.fillRect(0, 0, canvas.width, dangerZone);
+                // Bottom danger zone
+                ctx.fillRect(0, canvas.height - dangerZone, canvas.width, dangerZone);
+                // Left danger zone
+                ctx.fillRect(0, 0, dangerZone, canvas.height);
+                // Right danger zone
+                ctx.fillRect(canvas.width - dangerZone, 0, dangerZone, canvas.height);
+            }
+            
+            // Draw target (green circle to collect)
+            ctx.fillStyle = game.target.color;
+            ctx.beginPath();
+            ctx.arc(game.target.x, game.target.y, game.target.size, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Draw player (neon square)
             ctx.fillStyle = game.player.color;
             ctx.fillRect(
                 game.player.x - game.player.size / 2,
@@ -285,31 +414,29 @@
                 game.player.size
             );
             
-            // AI indicator and reasoning display
+            // Draw UI
+            ctx.fillStyle = '#00ff00';
+            ctx.font = '20px Arial';
+            ctx.fillText(`Score: ${game.score}`, canvas.width - 120, 30);
+            
+            // AI Coach display
             if (game.aiEnabled) {
                 ctx.fillStyle = '#00ff00';
                 ctx.font = '16px Arial';
-                ctx.fillText('AI: ON', 10, 25);
+                ctx.fillText('AI Coach: ON', 10, 25);
                 
-                // Display AI thoughts
+                // Display AI coaching thoughts
                 ctx.font = '12px Arial';
                 ctx.fillStyle = '#88ff88';
                 aiThoughts.forEach((thought, index) => {
-                    ctx.fillText(`AI: ${thought}`, 10, 50 + (index * 15));
+                    ctx.fillText(thought, 10, 50 + (index * 15));
                 });
-                
-                // AI analysis visualization
-                ctx.strokeStyle = '#00ff00';
-                ctx.setLineDash([5, 5]);
-                ctx.beginPath();
-                ctx.arc(canvas.width/2, canvas.height/2, 50, 0, 2 * Math.PI);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                
-                ctx.fillStyle = '#00ff00';
-                ctx.font = '10px Arial';
-                ctx.fillText('AI Optimal Zone', canvas.width/2 - 40, canvas.height/2 + 65);
             }
+            
+            // Controls instruction
+            ctx.fillStyle = '#666';
+            ctx.font = '12px Arial';
+            ctx.fillText('Use WASD or Arrow Keys to move', 10, canvas.height - 10);
         }
     </script>
 </body>
