@@ -54,6 +54,20 @@ const game = {
     touchCounter: 0, // Count circle touches
     lastTouchTime: 0, // Debounce rapid entries
     touchDebounceDelay: 30, // frames (0.5 seconds at 60fps)
+    alphabetPrompt: {
+        currentLetter: 'A',
+        changeTimer: 0,
+        changeInterval: 180, // 3 seconds at 60fps
+        letters: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
+    },
+    speechRecognition: {
+        isListening: false,
+        recognition: null,
+        lastHeardLetter: '',
+        isInCircle: false,
+        waitingForSpeech: false
+    },
+    successCount: 0, // Count successful letter + touch combinations
     keys: {
         up: false,
         down: false,
@@ -89,6 +103,7 @@ function initGame() {
     try {
         game.running = true;
         setupControls();
+        setupSpeechRecognition();
         gameLoop();
         console.log('Game initialized successfully');
         if (game.aiEnabled) {
@@ -97,6 +112,87 @@ function initGame() {
     } catch (error) {
         console.error('Game initialization failed:', error);
     }
+}
+
+// Setup speech recognition for alphabet prompts
+function setupSpeechRecognition() {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        game.speechRecognition.recognition = new SpeechRecognition();
+        
+        game.speechRecognition.recognition.continuous = true;
+        game.speechRecognition.recognition.interimResults = false;
+        game.speechRecognition.recognition.lang = 'en-US';
+        
+        game.speechRecognition.recognition.onresult = function(event) {
+            const lastResult = event.results[event.results.length - 1];
+            if (lastResult.isFinal) {
+                const spokenText = lastResult[0].transcript.trim().toUpperCase();
+                handleSpeechResult(spokenText);
+            }
+        };
+        
+        game.speechRecognition.recognition.onerror = function(event) {
+            console.log('Speech recognition error:', event.error);
+        };
+        
+        // Start listening
+        game.speechRecognition.recognition.start();
+        game.speechRecognition.isListening = true;
+        console.log('🎤 Speech recognition activated - say letters out loud!');
+    } else {
+        console.log('⚠️ Speech recognition not supported in this browser');
+    }
+}
+
+// Handle speech recognition results
+function handleSpeechResult(spokenText) {
+    console.log(`🎤 Heard: "${spokenText}"`);
+    
+    // Extract single letters from speech
+    const letters = spokenText.match(/[A-Z]/g);
+    if (letters && letters.length > 0) {
+        game.speechRecognition.lastHeardLetter = letters[0];
+        console.log(`📝 Detected letter: ${game.speechRecognition.lastHeardLetter}`);
+        
+        // Check if player is in circle and said the correct letter
+        checkLetterMatch();
+    }
+}
+
+// Check if spoken letter matches current prompt while in circle
+function checkLetterMatch() {
+    if (game.speechRecognition.isInCircle && 
+        game.speechRecognition.lastHeardLetter === game.alphabetPrompt.currentLetter) {
+        
+        // SUCCESS! Both conditions met
+        game.score += 5;
+        game.successCount++;
+        
+        // Advance to next letter
+        const currentIndex = game.alphabetPrompt.letters.indexOf(game.alphabetPrompt.currentLetter);
+        const nextIndex = (currentIndex + 1) % game.alphabetPrompt.letters.length;
+        game.alphabetPrompt.currentLetter = game.alphabetPrompt.letters[nextIndex];
+        game.alphabetPrompt.changeTimer = 0; // Reset timer
+        
+        console.log(`🎉 SUCCESS! Letter ${game.speechRecognition.lastHeardLetter} + Circle Touch = +5 points!`);
+        
+        // Trigger special success feedback
+        triggerLetterSuccessFeedback();
+        
+        // Reset speech state
+        game.speechRecognition.lastHeardLetter = '';
+        game.speechRecognition.isInCircle = false;
+    }
+}
+
+// Special feedback for successful letter + touch combination
+function triggerLetterSuccessFeedback() {
+    game.letterSuccessFeedback = {
+        active: true,
+        timer: 90, // 1.5 seconds
+        scale: 2.0
+    };
 }
 
 // Setup keyboard controls
@@ -205,9 +301,35 @@ function update() {
         }
     }
     
+    // Update letter success feedback timer
+    if (game.letterSuccessFeedback && game.letterSuccessFeedback.active) {
+        game.letterSuccessFeedback.timer--;
+        if (game.letterSuccessFeedback.timer <= 0) {
+            game.letterSuccessFeedback.active = false;
+        }
+    }
+    
+    // Update alphabet prompt system
+    updateAlphabetPrompt();
+    
     // AI Coach Analysis
     if (game.aiEnabled && frameCount % 60 === 0) { // Every second
         aiCoachAnalysis();
+    }
+}
+
+// Alphabet prompt system for cognitive load
+function updateAlphabetPrompt() {
+    game.alphabetPrompt.changeTimer++;
+    
+    // Change letter every 3 seconds
+    if (game.alphabetPrompt.changeTimer >= game.alphabetPrompt.changeInterval) {
+        const currentIndex = game.alphabetPrompt.letters.indexOf(game.alphabetPrompt.currentLetter);
+        const nextIndex = (currentIndex + 1) % game.alphabetPrompt.letters.length;
+        game.alphabetPrompt.currentLetter = game.alphabetPrompt.letters[nextIndex];
+        game.alphabetPrompt.changeTimer = 0;
+        
+        console.log(`📝 Alphabet Prompt: ${game.alphabetPrompt.currentLetter}`);
     }
 }
 
@@ -253,12 +375,26 @@ function updateSafeZoneStatus() {
     if (isEnteringCircle && canRegisterTouch) {
         game.touchCounter++;
         game.lastTouchTime = frameCount;
-        console.log(`🎯 CIRCLE TOUCH EVENT! Count: ${game.touchCounter} (Debounced: ${timeSinceLastTouch} frames)`);
         
-        // Visual feedback for touch event
+        // Mark that player is in circle for speech recognition
+        game.speechRecognition.isInCircle = true;
+        game.speechRecognition.waitingForSpeech = true;
+        
+        console.log(`🎯 CIRCLE ENTERED! Say "${game.alphabetPrompt.currentLetter}" out loud!`);
+        
+        // Check if we already heard the correct letter
+        checkLetterMatch();
+        
+        // Visual feedback for circle entry (not full success yet)
         triggerTouchFeedback();
     } else if (isEnteringCircle && !canRegisterTouch) {
         console.log(`⏱️ TOUCH DEBOUNCED: Too rapid (${timeSinceLastTouch}/${game.touchDebounceDelay} frames)`);
+    }
+    
+    // Reset speech state when leaving circle
+    if (game.previousZoneStatus !== 'outside' && game.zoneStatus === 'outside') {
+        game.speechRecognition.isInCircle = false;
+        game.speechRecognition.waitingForSpeech = false;
     }
     
     // RESET LOGIC: Leaving circle doesn't reset anything
@@ -301,13 +437,15 @@ function triggerTouchFeedback() {
         scale: 1.5
     };
     
-    // Add special AI message for successful touch
+    // Add special AI message for successful touch with alphabet awareness
     const touchMessages = [
         "Nice! Circle touched successfully",
         "Excellent entry! Well controlled",
         "Perfect! You nailed that entry",
         "Great job! Smooth circle entry",
-        "Outstanding! Clean touch execution"
+        "Outstanding! Clean touch execution",
+        `Superb! Touch while processing letter ${game.alphabetPrompt.currentLetter}`,
+        `Amazing multitasking with letter ${game.alphabetPrompt.currentLetter}!`
     ];
     const randomMessage = touchMessages[Math.floor(Math.random() * touchMessages.length)];
     aiThoughts.push(`🎯 ${randomMessage}`);
@@ -431,7 +569,9 @@ function aiCoachAnalysis() {
             "Steady progress – maintain your pace",
             "Nice control – continue navigating",
             "Smooth movement – you're learning well",
-            "Great technique – keep it up"
+            "Great technique – keep it up",
+            `Focus on letter ${game.alphabetPrompt.currentLetter} while moving`,
+            "Excellent multitasking – reading and moving!"
         ];
         coachMessage = generalMessages[Math.floor(Math.random() * generalMessages.length)];
     }
@@ -485,6 +625,27 @@ function render() {
         const touchText = '🎯 CIRCLE TOUCHED!';
         const textWidth = ctx.measureText(touchText).width;
         ctx.fillText(touchText, (canvas.width - textWidth) / 2, game.safeZone.y - 50);
+    }
+    
+    // Letter Success Feedback (bigger, more prominent)
+    if (game.letterSuccessFeedback && game.letterSuccessFeedback.active) {
+        const progress = 1 - (game.letterSuccessFeedback.timer / 90);
+        const alpha = 1 - progress;
+        const scale = 1 + (progress * 1.0);
+        
+        ctx.strokeStyle = `rgba(255, 255, 0, ${alpha})`;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(game.safeZone.x, game.safeZone.y, game.safeZone.radius * scale, 0, 2 * Math.PI);
+        ctx.stroke();
+        
+        // Success message
+        ctx.fillStyle = `rgba(255, 255, 0, ${alpha})`;
+        ctx.font = 'bold 32px Arial';
+        ctx.textAlign = 'center';
+        const successText = '🎉 LETTER + TOUCH SUCCESS! +5 POINTS!';
+        ctx.fillText(successText, canvas.width / 2, game.safeZone.y - 80);
+        ctx.textAlign = 'left';
     }
     
     // Draw danger zones (red areas near edges)
@@ -553,15 +714,27 @@ function render() {
     ctx.font = '20px Arial';
     ctx.fillText(`Score: ${game.score}`, canvas.width - 120, 30);
     
-    // Touch Counter Display (top-right corner, clean and visible)
+    // Success Counter (Letter + Touch combinations)
+    ctx.fillStyle = '#ffff00';
+    ctx.font = 'bold 24px Arial';
+    ctx.fillText(`Successes: ${game.successCount}`, canvas.width - 200, 60);
+    
+    // Touch Counter Display
     ctx.fillStyle = '#00ffff';
-    ctx.font = 'bold 22px Arial';
-    ctx.fillText(`Circle Touches: ${game.touchCounter}`, canvas.width - 220, 60);
+    ctx.font = '16px Arial';
+    ctx.fillText(`Circle Touches: ${game.touchCounter}`, canvas.width - 180, 85);
     
     // Zone Status Display
     ctx.fillStyle = '#ffffff';
-    ctx.font = '16px Arial';
-    ctx.fillText(`Zone: ${game.zoneStatus.toUpperCase()}`, canvas.width - 150, 85);
+    ctx.font = '14px Arial';
+    ctx.fillText(`Zone: ${game.zoneStatus.toUpperCase()}`, canvas.width - 150, 105);
+    
+    // Speech Status Indicator
+    if (game.speechRecognition.waitingForSpeech) {
+        ctx.fillStyle = '#ff6600';
+        ctx.font = 'bold 16px Arial';
+        ctx.fillText(`🎤 Say "${game.alphabetPrompt.currentLetter}"!`, canvas.width - 180, 125);
+    }
     
     // Danger Zone Warning Display (highest priority)
     if (game.dangerZone.active) {
@@ -592,6 +765,26 @@ function render() {
             ctx.fillText(thought, 10, 50 + (index * 15));
         });
     }
+    
+    // Alphabet Prompt Display (top center, high contrast)
+    ctx.fillStyle = '#00ff00'; // Retro green
+    ctx.font = 'bold 72px Arial';
+    ctx.textAlign = 'center';
+    
+    // Add subtle glow effect for better visibility
+    ctx.shadowColor = '#00ff00';
+    ctx.shadowBlur = 10;
+    
+    ctx.fillText(game.alphabetPrompt.currentLetter, canvas.width / 2, 80);
+    
+    // Reset shadow and alignment
+    ctx.shadowBlur = 0;
+    ctx.textAlign = 'left';
+    
+    // Letter change progress indicator (subtle)
+    const progress = game.alphabetPrompt.changeTimer / game.alphabetPrompt.changeInterval;
+    ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+    ctx.fillRect(canvas.width / 2 - 50, 90, 100 * progress, 3);
     
     // Controls instruction
     ctx.fillStyle = '#666';
