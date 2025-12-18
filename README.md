@@ -4,18 +4,33 @@ A simple web-based game built with HTML5 Canvas and JavaScript.
 
 ## Getting Started
 
+### Quick Play (One-Click Experience)
+1. Open `game-standalone.html` in your web browser
+2. The game runs immediately - no dependencies, no setup
+
+### Development Mode
 1. Open `index.html` in your web browser
 2. The game will start automatically
 
 ## Project Structure
 
 ```
-├── index.html      # Main entry point
-├── game.js         # Game source code
-├── README.md       # This file
-├── .kiro/          # Kiro configuration directory
-└── .gitignore      # Git ignore rules
+├── index.html           # Development entry point
+├── game.js              # Game source code
+├── game-standalone.html # Single-file build output (DEPLOY THIS)
+├── README.md            # This file
+├── .kiro/               # Kiro configuration directory
+└── .gitignore           # Git ignore rules
 ```
+
+## Build Output
+
+✅ **Single Build Ready**: `game-standalone.html`
+- Zero dependencies
+- All assets bundled inline
+- One-click play experience
+- Works offline
+- Ready for any static hosting
 
 ## Development
 
@@ -48,5 +63,6 @@ This project is ready for zero-config deployment on static hosting platforms:
 
 ## Files
 
-- `index.html` - HTML entry point with canvas setup
-- `game.js` - Main game logic and rendering code
+- `index.html` - Development entry point with canvas setup
+- `game.js` - Game source code (development)
+- `game-standalone.html` - **Production build** - single file with everything bundled
