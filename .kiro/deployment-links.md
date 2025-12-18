@@ -3,26 +3,21 @@
 ## 🔗 Required Links
 
 ### Live URL
-**GitHub Pages URL**: `https://[YOUR-USERNAME].github.io/[REPOSITORY-NAME]`
+**GitHub Pages URL**: `https://khanzoefisha.github.io/Retro-mind`
 
-**Instructions to get your live URL:**
-1. Push this repository to GitHub
-2. Go to repository Settings → Pages
-3. Enable GitHub Pages (source: main branch, folder: root)
-4. Your live URL will be: `https://[username].github.io/[repo-name]`
+**Status**: Ready to enable
+1. Go to https://github.com/khanzoefisha/Retro-mind/settings/pages
+2. Enable GitHub Pages (source: main branch, folder: root)
+3. Your game will be live at the URL above
 
 ### GitHub Repository Link
-**Repository URL**: `https://github.com/[YOUR-USERNAME]/[REPOSITORY-NAME]`
+**Repository URL**: `https://github.com/khanzoefisha/Retro-mind`
 
-**To create repository:**
-1. Go to GitHub.com
-2. Click "New Repository"
-3. Name it (e.g., "html5-canvas-game")
-4. Push your local code:
-   ```bash
-   git remote add origin https://github.com/[username]/[repo-name].git
-   git push -u origin main
-   ```
+**To push your code:**
+```bash
+git remote add origin https://github.com/khanzoefisha/Retro-mind.git
+git push -u origin main
+```
 
 ### Demo Video Link
 **Video URL**: `[TO BE RECORDED]`
@@ -82,9 +77,9 @@
 
 Once you complete the GitHub setup and recording:
 
-**Live URL**: https://[username].github.io/[repo-name]
-**GitHub Repository**: https://github.com/[username]/[repo-name]  
-**Demo Video**: [your-video-link]
+**Live URL**: https://khanzoefisha.github.io/Retro-mind
+**GitHub Repository**: https://github.com/khanzoefisha/Retro-mind  
+**Demo Video**: [TO BE RECORDED]
 **✅ .kiro Directory**: Confirmed included and tracked
 
 ## 🎯 Ready for Deployment
