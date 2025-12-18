@@ -118,8 +118,7 @@ function restartGame() {
     game.player.y = canvas.height / 2;
     game.safeZone.x = canvas.width / 2;
     game.safeZone.y = canvas.height / 2;
-    game.target.x = Math.random() * (canvas.width - 40) + 20;
-    game.target.y = Math.random() * (canvas.height - 40) + 20;
+    spawnTargetInSafeArea();
     game.alphabetPrompt.currentLetter = 'A';
     game.alphabetPrompt.changeTimer = 0;
     game.zoneStatus = 'outside';
@@ -411,6 +410,25 @@ function relocateGreenCircle() {
     console.log(`🎯 Green circle relocated to (${Math.round(game.safeZone.x)}, ${Math.round(game.safeZone.y)})`);
 }
 
+// Spawn target in safe area (away from danger zones)
+function spawnTargetInSafeArea() {
+    const dangerZoneSize = 50; // Same as visual danger zone
+    const targetSize = game.target.size;
+    const margin = 10; // Extra safety margin
+    
+    // Calculate safe area bounds (avoiding danger zones)
+    const minX = dangerZoneSize + targetSize + margin;
+    const maxX = canvas.width - dangerZoneSize - targetSize - margin;
+    const minY = dangerZoneSize + targetSize + margin + 100; // Extra margin for alphabet display
+    const maxY = canvas.height - dangerZoneSize - targetSize - margin - 50; // Extra margin for controls
+    
+    // Generate random position within safe area
+    game.target.x = Math.random() * (maxX - minX) + minX;
+    game.target.y = Math.random() * (maxY - minY) + minY;
+    
+    console.log(`🎯 Target spawned in safe area at (${Math.round(game.target.x)}, ${Math.round(game.target.y)})`);
+}
+
 // Complete failure path execution (child-friendly, encouraging)
 function executeFailurePath(failureType, heardLetter, targetLetter) {
     console.log(`❌ FAILURE PATH: ${failureType} | Heard: "${heardLetter}" | Target: "${targetLetter}"`);
@@ -608,9 +626,8 @@ function update() {
     
     if (distanceToTarget < (game.player.size/2 + game.target.size/2)) {
         game.score++;
-        // Spawn new target
-        game.target.x = Math.random() * (canvas.width - 40) + 20;
-        game.target.y = Math.random() * (canvas.height - 40) + 20;
+        // Spawn new target in safe area
+        spawnTargetInSafeArea();
         console.log('Target hit! Score:', game.score);
     }
     
