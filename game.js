@@ -65,7 +65,9 @@ const game = {
         recognition: null,
         lastHeardLetter: '',
         isInCircle: false,
-        waitingForSpeech: false
+        waitingForSpeech: false,
+        timeoutTimer: 0,
+        timeoutDuration: 300 // 5 seconds at 60fps to say the letter
     },
     successCount: 0, // Count successful letter + touch combinations
     keys: {
@@ -272,16 +274,8 @@ function checkLetterMatch() {
         game.speechRecognition.lastHeardLetter = '';
         game.speechRecognition.waitingForSpeech = false;
     } else if (game.speechRecognition.isInCircle && heardLetter) {
-        // Wrong letter - provide helpful feedback
-        console.log(`❌ Wrong letter! You said "${heardLetter}" but need "${targetLetter}"`);
-        
-        // Add visual feedback for wrong letter
-        game.wrongLetterFeedback = {
-            active: true,
-            timer: 60, // 1 second
-            heardLetter: heardLetter,
-            targetLetter: targetLetter
-        };
+        // Wrong letter - execute failure path
+        executeFailurePath('wrong_letter', heardLetter, targetLetter);
     }
 }
 
@@ -339,6 +333,66 @@ function relocateGreenCircle() {
     game.safeZone.y = Math.random() * (maxY - minY) + minY;
     
     console.log(`🎯 Green circle relocated to (${Math.round(game.safeZone.x)}, ${Math.round(game.safeZone.y)})`);
+}
+
+// Complete failure path execution (child-friendly, encouraging)
+function executeFailurePath(failureType, heardLetter, targetLetter) {
+    console.log(`❌ FAILURE PATH: ${failureType} | Heard: "${heardLetter}" | Target: "${targetLetter}"`);
+    
+    // 1. Alphabet does NOT change (stays the same for retry)
+    // 2. Score does NOT increment (no penalty, but no reward)
+    // 3. Square stays controllable (player can move freely)
+    
+    // 4. Child-friendly AI feedback based on failure type
+    let encouragingMessage = '';
+    
+    if (failureType === 'wrong_letter') {
+        const wrongLetterMessages = [
+            "Try again — say the letter clearly",
+            `You said "${heardLetter}" — try saying "${targetLetter}"`,
+            "Almost there! Say the letter you see",
+            "Good try! Look at the letter and say it",
+            "Keep trying! You can do this"
+        ];
+        encouragingMessage = wrongLetterMessages[Math.floor(Math.random() * wrongLetterMessages.length)];
+        
+        // Visual feedback for wrong letter
+        game.wrongLetterFeedback = {
+            active: true,
+            timer: 120, // 2 seconds (longer for encouragement)
+            heardLetter: heardLetter,
+            targetLetter: targetLetter,
+            message: encouragingMessage
+        };
+        
+    } else if (failureType === 'timeout') {
+        const timeoutMessages = [
+            "Try again — say the letter clearly",
+            "I didn't hear you — speak up!",
+            "Say the letter out loud when you're ready",
+            "Take your time — say the letter clearly",
+            "Try speaking the letter again"
+        ];
+        encouragingMessage = timeoutMessages[Math.floor(Math.random() * timeoutMessages.length)];
+        
+        // Visual feedback for timeout
+        game.timeoutFeedback = {
+            active: true,
+            timer: 120, // 2 seconds
+            targetLetter: targetLetter,
+            message: encouragingMessage
+        };
+    }
+    
+    // Add encouraging message to AI thoughts
+    aiThoughts.push(`💪 ${encouragingMessage}`);
+    
+    // 5. Reset speech state but keep player in circle for immediate retry
+    game.speechRecognition.lastHeardLetter = '';
+    game.speechRecognition.timeoutTimer = 0; // Reset timeout for new attempt
+    // Keep waitingForSpeech = true so they can try again immediately
+    
+    console.log(`💪 Encouraging retry: ${encouragingMessage}`);
 }
 
 // Special feedback for successful letter + touch combination
@@ -480,11 +534,29 @@ function update() {
         }
     }
     
+    // Update timeout feedback timer
+    if (game.timeoutFeedback && game.timeoutFeedback.active) {
+        game.timeoutFeedback.timer--;
+        if (game.timeoutFeedback.timer <= 0) {
+            game.timeoutFeedback.active = false;
+        }
+    }
+    
     // Update circle relocation feedback timer
     if (game.circleRelocationFeedback && game.circleRelocationFeedback.active) {
         game.circleRelocationFeedback.timer--;
         if (game.circleRelocationFeedback.timer <= 0) {
             game.circleRelocationFeedback.active = false;
+        }
+    }
+    
+    // Update speech timeout when waiting for voice input
+    if (game.speechRecognition.waitingForSpeech) {
+        game.speechRecognition.timeoutTimer++;
+        
+        // Check for timeout (no voice detected within time window)
+        if (game.speechRecognition.timeoutTimer >= game.speechRecognition.timeoutDuration) {
+            executeFailurePath('timeout', '', game.alphabetPrompt.currentLetter);
         }
     }
     
@@ -558,8 +630,9 @@ function updateSafeZoneStatus() {
         // Mark that player is in circle for speech recognition
         game.speechRecognition.isInCircle = true;
         game.speechRecognition.waitingForSpeech = true;
+        game.speechRecognition.timeoutTimer = 0; // Start timeout countdown
         
-        console.log(`🎯 CIRCLE ENTERED! Say "${game.alphabetPrompt.currentLetter}" out loud!`);
+        console.log(`🎯 CIRCLE ENTERED! Say "${game.alphabetPrompt.currentLetter}" out loud! (5 second window)`);
         
         // Check if we already heard the correct letter
         checkLetterMatch();
@@ -827,16 +900,42 @@ function render() {
         ctx.textAlign = 'left';
     }
     
-    // Wrong Letter Feedback (helpful correction)
+    // Wrong Letter Feedback (encouraging, child-friendly)
     if (game.wrongLetterFeedback && game.wrongLetterFeedback.active) {
-        const alpha = game.wrongLetterFeedback.timer / 60;
+        const alpha = game.wrongLetterFeedback.timer / 120;
         
-        ctx.fillStyle = `rgba(255, 100, 100, ${alpha})`;
-        ctx.font = 'bold 24px Arial';
+        ctx.fillStyle = `rgba(255, 150, 100, ${alpha})`;
+        ctx.font = 'bold 20px Arial';
         ctx.textAlign = 'center';
         
-        const wrongText = `You said "${game.wrongLetterFeedback.heardLetter}" - Try "${game.wrongLetterFeedback.targetLetter}"`;
-        ctx.fillText(wrongText, canvas.width / 2, game.safeZone.y + 150);
+        // Show encouraging message instead of harsh correction
+        ctx.fillText(game.wrongLetterFeedback.message, canvas.width / 2, game.safeZone.y + 150);
+        
+        // Smaller, gentler correction below
+        ctx.fillStyle = `rgba(255, 200, 150, ${alpha * 0.8})`;
+        ctx.font = '16px Arial';
+        const hintText = `(You said "${game.wrongLetterFeedback.heardLetter}" — try "${game.wrongLetterFeedback.targetLetter}")`;
+        ctx.fillText(hintText, canvas.width / 2, game.safeZone.y + 175);
+        
+        ctx.textAlign = 'left';
+    }
+    
+    // Timeout Feedback (encouraging voice prompt)
+    if (game.timeoutFeedback && game.timeoutFeedback.active) {
+        const alpha = game.timeoutFeedback.timer / 120;
+        
+        ctx.fillStyle = `rgba(100, 150, 255, ${alpha})`;
+        ctx.font = 'bold 20px Arial';
+        ctx.textAlign = 'center';
+        
+        ctx.fillText(game.timeoutFeedback.message, canvas.width / 2, game.safeZone.y + 150);
+        
+        // Gentle reminder
+        ctx.fillStyle = `rgba(150, 200, 255, ${alpha * 0.8})`;
+        ctx.font = '16px Arial';
+        const reminderText = `(Say "${game.timeoutFeedback.targetLetter}" out loud)`;
+        ctx.fillText(reminderText, canvas.width / 2, game.safeZone.y + 175);
+        
         ctx.textAlign = 'left';
     }
     
@@ -939,11 +1038,27 @@ function render() {
     const micStatus = game.speechRecognition.isListening ? '🎤 Listening...' : '🎤 Not listening';
     ctx.fillText(micStatus, 10, 25);
     
-    // Speech Status Indicator
+    // Speech Status Indicator with timeout progress
     if (game.speechRecognition.waitingForSpeech) {
         ctx.fillStyle = '#ff6600';
         ctx.font = 'bold 18px Arial';
         ctx.fillText(`🎤 Say "${game.alphabetPrompt.currentLetter}"!`, canvas.width - 200, 85);
+        
+        // Timeout progress bar (child-friendly visual cue)
+        const timeProgress = game.speechRecognition.timeoutTimer / game.speechRecognition.timeoutDuration;
+        const barWidth = 150;
+        const barHeight = 4;
+        const barX = canvas.width - 200;
+        const barY = 90;
+        
+        // Background bar
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        
+        // Progress bar (changes color as time runs out)
+        const progressColor = timeProgress < 0.7 ? '#00ff00' : timeProgress < 0.9 ? '#ffff00' : '#ff6600';
+        ctx.fillStyle = progressColor;
+        ctx.fillRect(barX, barY, barWidth * (1 - timeProgress), barHeight);
     }
     
     // Danger Zone Warning Display (highest priority)
