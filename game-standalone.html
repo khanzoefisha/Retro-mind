@@ -194,6 +194,21 @@
                 size: 15,
                 color: '#00ff00'
             },
+            safeZone: {
+                x: canvas.width / 2,
+                y: canvas.height / 2,
+                radius: 100,
+                color: 'rgba(0, 255, 0, 0.2)',
+                borderColor: '#00ff00'
+            },
+            zoneStatus: 'outside', // 'inside', 'outside', 'boundary'
+            dangerZone: {
+                active: false,
+                flashTimer: 0,
+                flashDuration: 120, // frames (2 seconds at 60fps)
+                warningText: '',
+                distanceThreshold: 150 // pixels from safe zone center
+            },
             keys: {
                 up: false,
                 down: false,

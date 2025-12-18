@@ -35,6 +35,21 @@ const game = {
         size: 15,
         color: '#00ff00'
     },
+    safeZone: {
+        x: canvas.width / 2,
+        y: canvas.height / 2,
+        radius: 100,
+        color: 'rgba(0, 255, 0, 0.2)',
+        borderColor: '#00ff00'
+    },
+    zoneStatus: 'outside', // 'inside', 'outside', 'boundary'
+    dangerZone: {
+        active: false,
+        flashTimer: 0,
+        flashDuration: 120, // frames (2 seconds at 60fps)
+        warningText: '',
+        distanceThreshold: 150 // pixels from safe zone center
+    }
     keys: {
         up: false,
         down: false,
@@ -161,6 +176,9 @@ function update() {
         game.player.x += game.player.speed;
     }
     
+    // Update Safe Zone status
+    updateSafeZoneStatus();
+    
     // Check collision with target (green circle)
     const distanceToTarget = Math.sqrt(
         Math.pow(game.player.x - game.target.x, 2) + 
@@ -181,16 +199,79 @@ function update() {
     }
 }
 
+// Safe Zone collision detection system
+function updateSafeZoneStatus() {
+    const distanceToCenter = Math.sqrt(
+        Math.pow(game.player.x - game.safeZone.x, 2) + 
+        Math.pow(game.player.y - game.safeZone.y, 2)
+    );
+    
+    const boundaryThreshold = 5; // Pixels for boundary detection
+    const previousStatus = game.zoneStatus;
+    
+    // Define zone regions
+    if (distanceToCenter <= game.safeZone.radius - boundaryThreshold) {
+        game.zoneStatus = 'inside';
+        game.dangerZone.active = false; // Safe zone = no danger
+    } else if (distanceToCenter >= game.safeZone.radius + boundaryThreshold) {
+        game.zoneStatus = 'outside';
+        
+        // Trigger danger zone if exceeding distance threshold
+        if (distanceToCenter > game.dangerZone.distanceThreshold) {
+            triggerDangerZone("⚠️ Danger Zone: You're leaving the optimal area");
+        }
+    } else {
+        game.zoneStatus = 'boundary';
+        game.dangerZone.active = false; // Boundary is still acceptable
+    }
+    
+    // Update danger zone flash timer
+    if (game.dangerZone.flashTimer > 0) {
+        game.dangerZone.flashTimer--;
+        if (game.dangerZone.flashTimer <= 0) {
+            game.dangerZone.active = false;
+        }
+    }
+    
+    // Log zone transitions
+    if (previousStatus !== game.zoneStatus) {
+        console.log(`Zone Status: ${previousStatus} → ${game.zoneStatus}`);
+        
+        // Trigger zone-specific events
+        switch(game.zoneStatus) {
+            case 'inside':
+                console.log('✅ Entered Safe Zone - Well done!');
+                break;
+            case 'outside':
+                console.log('⚠️ Left Safe Zone - Return for safety!');
+                break;
+            case 'boundary':
+                console.log('🎯 On Safe Zone boundary - Careful positioning!');
+                break;
+        }
+    }
+}
+
+// Trigger danger zone warning with visual feedback
+function triggerDangerZone(warningMessage) {
+    if (!game.dangerZone.active) { // Only trigger if not already active
+        game.dangerZone.active = true;
+        game.dangerZone.flashTimer = game.dangerZone.flashDuration;
+        game.dangerZone.warningText = warningMessage;
+        console.log('🚨 DANGER ZONE ACTIVATED:', warningMessage);
+    }
+}
+
 // AI Coach provides guidance
 function aiCoachAnalysis() {
     const edgeThreshold = 50;
-    const dangerZones = [];
+    const screenDangerZones = [];
     
-    // Check for danger zones (near edges)
-    if (game.player.x < edgeThreshold) dangerZones.push("left edge");
-    if (game.player.x > canvas.width - edgeThreshold) dangerZones.push("right edge");
-    if (game.player.y < edgeThreshold) dangerZones.push("top edge");
-    if (game.player.y > canvas.height - edgeThreshold) dangerZones.push("bottom edge");
+    // Check for screen edge danger zones
+    if (game.player.x < edgeThreshold) screenDangerZones.push("left edge");
+    if (game.player.x > canvas.width - edgeThreshold) screenDangerZones.push("right edge");
+    if (game.player.y < edgeThreshold) screenDangerZones.push("top edge");
+    if (game.player.y > canvas.height - edgeThreshold) screenDangerZones.push("bottom edge");
     
     // Distance to target
     const distanceToTarget = Math.sqrt(
@@ -198,11 +279,35 @@ function aiCoachAnalysis() {
         Math.pow(game.player.y - game.target.y, 2)
     );
     
+    // Distance from safe zone center
+    const distanceFromSafeZone = Math.sqrt(
+        Math.pow(game.player.x - game.safeZone.x, 2) + 
+        Math.pow(game.player.y - game.safeZone.y, 2)
+    );
+    
     let coachMessage = "";
     
-    if (dangerZones.length > 0) {
-        coachMessage = `⚠️ DANGER ZONE: Near ${dangerZones.join(", ")}`;
-    } else if (distanceToTarget < 100) {
+    // Priority 1: Active danger zone (highest priority)
+    if (game.dangerZone.active) {
+        coachMessage = game.dangerZone.warningText;
+    }
+    // Priority 2: Screen edge danger zones
+    else if (screenDangerZones.length > 0) {
+        coachMessage = `⚠️ SCREEN EDGE: Near ${screenDangerZones.join(", ")}`;
+        // Also trigger danger zone for screen edges
+        triggerDangerZone(`⚠️ Danger Zone: Too close to ${screenDangerZones.join(", ")}`);
+    }
+    // Priority 3: Safe Zone status with distance feedback
+    else if (game.zoneStatus === 'inside') {
+        coachMessage = "✅ SAFE ZONE: Perfect positioning!";
+    } else if (game.zoneStatus === 'boundary') {
+        coachMessage = "🎯 SAFE ZONE EDGE: Stay centered for safety";
+    } else if (game.zoneStatus === 'outside') {
+        const distanceText = Math.round(distanceFromSafeZone - game.safeZone.radius);
+        coachMessage = `🏃 OUTSIDE SAFE ZONE: ${distanceText}px away - return!`;
+    }
+    // Priority 4: Target guidance
+    else if (distanceToTarget < 100) {
         coachMessage = "🎯 Close to target - good positioning!";
     } else if (distanceToTarget > 200) {
         coachMessage = "🏃 Target is far - move closer";
@@ -226,6 +331,21 @@ function render() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
+    // Draw Safe Zone (green circle) - Always visible
+    ctx.fillStyle = game.safeZone.color;
+    ctx.beginPath();
+    ctx.arc(game.safeZone.x, game.safeZone.y, game.safeZone.radius, 0, 2 * Math.PI);
+    ctx.fill();
+    
+    // Draw Safe Zone border
+    ctx.strokeStyle = game.safeZone.borderColor;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.arc(game.safeZone.x, game.safeZone.y, game.safeZone.radius, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
     // Draw danger zones (red areas near edges)
     if (game.aiEnabled) {
         ctx.fillStyle = 'rgba(255, 0, 0, 0.1)';
@@ -240,14 +360,34 @@ function render() {
         ctx.fillRect(canvas.width - dangerZone, 0, dangerZone, canvas.height);
     }
     
-    // Draw target (green circle to collect)
+    // Draw target (small green circle to collect)
     ctx.fillStyle = game.target.color;
     ctx.beginPath();
     ctx.arc(game.target.x, game.target.y, game.target.size, 0, 2 * Math.PI);
     ctx.fill();
     
-    // Draw player (neon square)
-    ctx.fillStyle = game.player.color;
+    // Draw player (neon square) with zone-based coloring and danger effects
+    let playerColor = game.player.color;
+    let outlineColor = null;
+    
+    if (game.dangerZone.active) {
+        // Flashing red when in danger zone
+        const flashIntensity = Math.sin(frameCount * 0.3) * 0.5 + 0.5;
+        playerColor = `rgb(${255}, ${Math.floor(100 * flashIntensity)}, 0)`;
+        outlineColor = '#ff0000'; // Red outline in danger
+    } else if (game.zoneStatus === 'inside') {
+        playerColor = '#00ff00'; // Bright green when safe
+        outlineColor = '#00cc00'; // Darker green outline
+    } else if (game.zoneStatus === 'boundary') {
+        playerColor = '#ffff00'; // Yellow on boundary
+        outlineColor = '#cccc00'; // Darker yellow outline
+    } else {
+        playerColor = '#ff6600'; // Orange when outside
+        outlineColor = '#cc4400'; // Darker orange outline
+    }
+    
+    // Draw player square
+    ctx.fillStyle = playerColor;
     ctx.fillRect(
         game.player.x - game.player.size / 2,
         game.player.y - game.player.size / 2,
@@ -255,10 +395,43 @@ function render() {
         game.player.size
     );
     
+    // Draw outline for danger zone or status indication
+    if (outlineColor) {
+        ctx.strokeStyle = outlineColor;
+        ctx.lineWidth = game.dangerZone.active ? 3 : 2;
+        ctx.strokeRect(
+            game.player.x - game.player.size / 2,
+            game.player.y - game.player.size / 2,
+            game.player.size,
+            game.player.size
+        );
+    }
+    
     // Draw UI
     ctx.fillStyle = '#00ff00';
     ctx.font = '20px Arial';
     ctx.fillText(`Score: ${game.score}`, canvas.width - 120, 30);
+    
+    // Zone Status Display
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px Arial';
+    ctx.fillText(`Zone: ${game.zoneStatus.toUpperCase()}`, canvas.width - 150, 55);
+    
+    // Danger Zone Warning Display (highest priority)
+    if (game.dangerZone.active) {
+        const flashAlpha = Math.sin(frameCount * 0.4) * 0.5 + 0.5;
+        ctx.fillStyle = `rgba(255, 0, 0, ${flashAlpha})`;
+        ctx.font = 'bold 24px Arial';
+        
+        // Center the warning text
+        const warningText = game.dangerZone.warningText;
+        const textWidth = ctx.measureText(warningText).width;
+        ctx.fillText(warningText, (canvas.width - textWidth) / 2, 100);
+        
+        // Add warning background
+        ctx.fillStyle = `rgba(255, 0, 0, ${flashAlpha * 0.3})`;
+        ctx.fillRect((canvas.width - textWidth) / 2 - 10, 75, textWidth + 20, 35);
+    }
     
     // AI Coach display
     if (game.aiEnabled) {
@@ -277,5 +450,6 @@ function render() {
     // Controls instruction
     ctx.fillStyle = '#666';
     ctx.font = '12px Arial';
-    ctx.fillText('Use WASD or Arrow Keys to move', 10, canvas.height - 10);
+    ctx.fillText('Use WASD or Arrow Keys to move', 10, canvas.height - 25);
+    ctx.fillText('Stay in the green Safe Zone!', 10, canvas.height - 10);
 }
