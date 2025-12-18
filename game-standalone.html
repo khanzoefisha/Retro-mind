@@ -202,6 +202,7 @@
                 borderColor: '#00ff00'
             },
             zoneStatus: 'outside', // 'inside', 'outside', 'boundary'
+            previousZoneStatus: 'outside', // Track previous state for entry detection
             dangerZone: {
                 active: false,
                 flashTimer: 0,
@@ -209,6 +210,7 @@
                 warningText: '',
                 distanceThreshold: 150 // pixels from safe zone center
             },
+            touchCounter: 0, // Count circle touches
             keys: {
                 up: false,
                 down: false,

@@ -43,13 +43,15 @@ const game = {
         borderColor: '#00ff00'
     },
     zoneStatus: 'outside', // 'inside', 'outside', 'boundary'
+    previousZoneStatus: 'outside', // Track previous state for entry detection
     dangerZone: {
         active: false,
         flashTimer: 0,
         flashDuration: 120, // frames (2 seconds at 60fps)
         warningText: '',
         distanceThreshold: 150 // pixels from safe zone center
-    }
+    },
+    touchCounter: 0, // Count circle touches
     keys: {
         up: false,
         down: false,
@@ -193,13 +195,21 @@ function update() {
         console.log('Target hit! Score:', game.score);
     }
     
+    // Update touch feedback timer
+    if (game.touchFeedback && game.touchFeedback.active) {
+        game.touchFeedback.timer--;
+        if (game.touchFeedback.timer <= 0) {
+            game.touchFeedback.active = false;
+        }
+    }
+    
     // AI Coach Analysis
     if (game.aiEnabled && frameCount % 60 === 0) { // Every second
         aiCoachAnalysis();
     }
 }
 
-// Safe Zone collision detection system
+// Safe Zone collision detection system with touch event detection
 function updateSafeZoneStatus() {
     const distanceToCenter = Math.sqrt(
         Math.pow(game.player.x - game.safeZone.x, 2) + 
@@ -207,7 +217,9 @@ function updateSafeZoneStatus() {
     );
     
     const boundaryThreshold = 5; // Pixels for boundary detection
-    const previousStatus = game.zoneStatus;
+    
+    // Store previous status for entry detection
+    game.previousZoneStatus = game.zoneStatus;
     
     // Define zone regions
     if (distanceToCenter <= game.safeZone.radius - boundaryThreshold) {
@@ -225,6 +237,21 @@ function updateSafeZoneStatus() {
         game.dangerZone.active = false; // Boundary is still acceptable
     }
     
+    // CIRCLE TOUCH EVENT DETECTION
+    // Count only when entering the circle (inside or boundary), not while staying
+    const isEnteringCircle = (
+        (game.previousZoneStatus === 'outside') && 
+        (game.zoneStatus === 'inside' || game.zoneStatus === 'boundary')
+    );
+    
+    if (isEnteringCircle) {
+        game.touchCounter++;
+        console.log(`🎯 CIRCLE TOUCH EVENT! Count: ${game.touchCounter}`);
+        
+        // Visual feedback for touch event
+        triggerTouchFeedback();
+    }
+    
     // Update danger zone flash timer
     if (game.dangerZone.flashTimer > 0) {
         game.dangerZone.flashTimer--;
@@ -234,8 +261,8 @@ function updateSafeZoneStatus() {
     }
     
     // Log zone transitions
-    if (previousStatus !== game.zoneStatus) {
-        console.log(`Zone Status: ${previousStatus} → ${game.zoneStatus}`);
+    if (game.previousZoneStatus !== game.zoneStatus) {
+        console.log(`Zone Status: ${game.previousZoneStatus} → ${game.zoneStatus}`);
         
         // Trigger zone-specific events
         switch(game.zoneStatus) {
@@ -250,6 +277,16 @@ function updateSafeZoneStatus() {
                 break;
         }
     }
+}
+
+// Visual feedback for successful circle touch
+function triggerTouchFeedback() {
+    // Add a brief visual effect for successful touch
+    game.touchFeedback = {
+        active: true,
+        timer: 30, // 0.5 seconds at 60fps
+        scale: 1.5
+    };
 }
 
 // Trigger danger zone warning with visual feedback
@@ -337,7 +374,7 @@ function render() {
     ctx.arc(game.safeZone.x, game.safeZone.y, game.safeZone.radius, 0, 2 * Math.PI);
     ctx.fill();
     
-    // Draw Safe Zone border
+    // Draw Safe Zone border with touch feedback effect
     ctx.strokeStyle = game.safeZone.borderColor;
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 5]);
@@ -345,6 +382,26 @@ function render() {
     ctx.arc(game.safeZone.x, game.safeZone.y, game.safeZone.radius, 0, 2 * Math.PI);
     ctx.stroke();
     ctx.setLineDash([]);
+    
+    // Touch feedback visual effect
+    if (game.touchFeedback && game.touchFeedback.active) {
+        const progress = 1 - (game.touchFeedback.timer / 30);
+        const alpha = 1 - progress;
+        const scale = 1 + (progress * 0.5);
+        
+        ctx.strokeStyle = `rgba(0, 255, 255, ${alpha})`;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(game.safeZone.x, game.safeZone.y, game.safeZone.radius * scale, 0, 2 * Math.PI);
+        ctx.stroke();
+        
+        // Touch success text
+        ctx.fillStyle = `rgba(0, 255, 255, ${alpha})`;
+        ctx.font = 'bold 20px Arial';
+        const touchText = '🎯 CIRCLE TOUCHED!';
+        const textWidth = ctx.measureText(touchText).width;
+        ctx.fillText(touchText, (canvas.width - textWidth) / 2, game.safeZone.y - 50);
+    }
     
     // Draw danger zones (red areas near edges)
     if (game.aiEnabled) {
@@ -412,10 +469,15 @@ function render() {
     ctx.font = '20px Arial';
     ctx.fillText(`Score: ${game.score}`, canvas.width - 120, 30);
     
+    // Touch Counter Display (prominent)
+    ctx.fillStyle = '#00ffff';
+    ctx.font = 'bold 24px Arial';
+    ctx.fillText(`Touches: ${game.touchCounter}`, canvas.width - 180, 60);
+    
     // Zone Status Display
     ctx.fillStyle = '#ffffff';
     ctx.font = '16px Arial';
-    ctx.fillText(`Zone: ${game.zoneStatus.toUpperCase()}`, canvas.width - 150, 55);
+    ctx.fillText(`Zone: ${game.zoneStatus.toUpperCase()}`, canvas.width - 150, 85);
     
     // Danger Zone Warning Display (highest priority)
     if (game.dangerZone.active) {
