@@ -511,32 +511,33 @@ function relocateGreenCircle() {
     console.log(`🎯 Green circle relocated to (${Math.round(game.safeZone.x)}, ${Math.round(game.safeZone.y)})`);
 }
 
-// Spawn target in safe area (away from danger zones)
+// Spawn target inside the green safe zone circle
 function spawnTargetInSafeArea() {
-    const dangerZoneSize = 50; // Same as visual danger zone
     const targetSize = game.target.size;
-    const safetyMargin = 30; // Increased safety margin to ensure target stays in black area
+    const safeZoneRadius = game.safeZone.radius;
+    const margin = targetSize + 10; // Margin to keep target fully inside circle
     
-    // Calculate safe area bounds (avoiding white danger zones completely)
-    const minX = dangerZoneSize + targetSize + safetyMargin;
-    const maxX = canvas.width - dangerZoneSize - targetSize - safetyMargin;
-    const minY = dangerZoneSize + targetSize + safetyMargin + 120; // Extra margin for alphabet display
-    const maxY = canvas.height - dangerZoneSize - targetSize - safetyMargin - 80; // Extra margin for controls
+    // Calculate maximum spawn radius (inside the green circle)
+    const maxSpawnRadius = safeZoneRadius - margin;
     
-    // Ensure we have valid bounds
-    if (maxX <= minX || maxY <= minY) {
-        console.warn('Safe area too small, using center position');
-        game.target.x = canvas.width / 2;
-        game.target.y = canvas.height / 2;
+    // If the safe zone is too small, spawn at center
+    if (maxSpawnRadius <= 0) {
+        console.warn('Safe zone too small for target, spawning at center');
+        game.target.x = game.safeZone.x;
+        game.target.y = game.safeZone.y;
         return;
     }
     
-    // Generate random position within safe black area
-    game.target.x = Math.random() * (maxX - minX) + minX;
-    game.target.y = Math.random() * (maxY - minY) + minY;
+    // Generate random position within the green safe zone circle
+    const angle = Math.random() * 2 * Math.PI; // Random angle
+    const radius = Math.random() * maxSpawnRadius; // Random radius within safe zone
     
-    console.log(`🎯 Target spawned safely in black area at (${Math.round(game.target.x)}, ${Math.round(game.target.y)})`);
-    console.log(`Safe bounds: X(${minX}-${maxX}), Y(${minY}-${maxY})`);
+    // Convert polar coordinates to cartesian coordinates
+    game.target.x = game.safeZone.x + radius * Math.cos(angle);
+    game.target.y = game.safeZone.y + radius * Math.sin(angle);
+    
+    console.log(`🎯 Target spawned inside green safe zone at (${Math.round(game.target.x)}, ${Math.round(game.target.y)})`);
+    console.log(`Safe zone center: (${Math.round(game.safeZone.x)}, ${Math.round(game.safeZone.y)}), radius: ${safeZoneRadius}`);
 }
 
 // Complete failure path execution (child-friendly, encouraging)
