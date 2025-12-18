@@ -75,11 +75,39 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
+// AI reasoning variables
+let aiThoughts = [];
+let frameCount = 0;
+
 // Update game logic
 function update() {
-    // Game logic goes here
+    frameCount++;
+    
     if (game.aiEnabled) {
-        // AI-enhanced features could go here
+        // AI reasoning: Analyze player position
+        if (frameCount % 60 === 0) { // Every second
+            const centerDistance = Math.sqrt(
+                Math.pow(game.player.x - canvas.width/2, 2) + 
+                Math.pow(game.player.y - canvas.height/2, 2)
+            );
+            
+            if (centerDistance < 50) {
+                aiThoughts.push("Player is centered - optimal position");
+            } else {
+                aiThoughts.push("Player off-center - suggesting movement");
+            }
+            
+            // Keep only last 3 thoughts
+            if (aiThoughts.length > 3) {
+                aiThoughts.shift();
+            }
+            
+            console.log('AI Analysis:', aiThoughts[aiThoughts.length - 1]);
+        }
+        
+        // AI-enhanced player movement (subtle animation)
+        game.player.x += Math.sin(frameCount * 0.02) * 0.5;
+        game.player.y += Math.cos(frameCount * 0.03) * 0.3;
     }
 }
 
@@ -98,10 +126,29 @@ function render() {
         game.player.size
     );
     
-    // AI indicator
+    // AI indicator and reasoning display
     if (game.aiEnabled) {
         ctx.fillStyle = '#00ff00';
         ctx.font = '16px Arial';
         ctx.fillText('AI: ON', 10, 25);
+        
+        // Display AI thoughts
+        ctx.font = '12px Arial';
+        ctx.fillStyle = '#88ff88';
+        aiThoughts.forEach((thought, index) => {
+            ctx.fillText(`AI: ${thought}`, 10, 50 + (index * 15));
+        });
+        
+        // AI analysis visualization
+        ctx.strokeStyle = '#00ff00';
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.arc(canvas.width/2, canvas.height/2, 50, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        ctx.fillStyle = '#00ff00';
+        ctx.font = '10px Arial';
+        ctx.fillText('AI Optimal Zone', canvas.width/2 - 40, canvas.height/2 + 65);
     }
 }
