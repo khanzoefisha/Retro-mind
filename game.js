@@ -134,55 +134,166 @@ function setupSpeechRecognition() {
         
         game.speechRecognition.recognition.onerror = function(event) {
             console.log('Speech recognition error:', event.error);
+            game.speechRecognition.isListening = false;
+        };
+        
+        game.speechRecognition.recognition.onstart = function() {
+            game.speechRecognition.isListening = true;
+            console.log('🎤 Speech recognition started - listening...');
+        };
+        
+        game.speechRecognition.recognition.onend = function() {
+            game.speechRecognition.isListening = false;
+            console.log('🎤 Speech recognition ended - restarting...');
+            // Restart recognition to keep listening
+            if (game.running) {
+                setTimeout(() => {
+                    try {
+                        game.speechRecognition.recognition.start();
+                    } catch (e) {
+                        console.log('Speech recognition restart failed:', e);
+                    }
+                }, 100);
+            }
         };
         
         // Start listening
         game.speechRecognition.recognition.start();
-        game.speechRecognition.isListening = true;
         console.log('🎤 Speech recognition activated - say letters out loud!');
     } else {
         console.log('⚠️ Speech recognition not supported in this browser');
     }
 }
 
-// Handle speech recognition results
+// Handle speech recognition results with child-friendly matching
 function handleSpeechResult(spokenText) {
     console.log(`🎤 Heard: "${spokenText}"`);
     
-    // Extract single letters from speech
-    const letters = spokenText.match(/[A-Z]/g);
-    if (letters && letters.length > 0) {
-        game.speechRecognition.lastHeardLetter = letters[0];
+    // Enhanced letter extraction with child-friendly rules
+    const detectedLetter = extractSingleLetter(spokenText);
+    if (detectedLetter) {
+        game.speechRecognition.lastHeardLetter = detectedLetter;
         console.log(`📝 Detected letter: ${game.speechRecognition.lastHeardLetter}`);
         
         // Check if player is in circle and said the correct letter
         checkLetterMatch();
+    } else {
+        console.log(`❌ No clear single letter detected in: "${spokenText}"`);
     }
+}
+
+// Child-friendly letter extraction with robust matching rules
+function extractSingleLetter(spokenText) {
+    // Convert to uppercase for case-insensitive matching
+    const upperText = spokenText.toUpperCase();
+    
+    // Common letter pronunciations and variations
+    const letterMappings = {
+        'A': ['A', 'AY', 'EH'],
+        'B': ['B', 'BE', 'BEE'],
+        'C': ['C', 'SEE', 'CEE'],
+        'D': ['D', 'DEE'],
+        'E': ['E', 'EE'],
+        'F': ['F', 'EF', 'EFF'],
+        'G': ['G', 'GEE', 'JEE'],
+        'H': ['H', 'AITCH', 'HAITCH'],
+        'I': ['I', 'EYE'],
+        'J': ['J', 'JAY'],
+        'K': ['K', 'KAY'],
+        'L': ['L', 'EL', 'ELL'],
+        'M': ['M', 'EM'],
+        'N': ['N', 'EN'],
+        'O': ['O', 'OH'],
+        'P': ['P', 'PEE'],
+        'Q': ['Q', 'CUE', 'QUEUE'],
+        'R': ['R', 'AR', 'ARE'],
+        'S': ['S', 'ES', 'ESS'],
+        'T': ['T', 'TEE'],
+        'U': ['U', 'YOU'],
+        'V': ['V', 'VEE'],
+        'W': ['W', 'DOUBLE U', 'DOUBLE YOU'],
+        'X': ['X', 'EX'],
+        'Y': ['Y', 'WHY'],
+        'Z': ['Z', 'ZED', 'ZEE']
+    };
+    
+    // First, try exact single letter match (most common)
+    const singleLetters = upperText.match(/\b[A-Z]\b/g);
+    if (singleLetters && singleLetters.length === 1) {
+        return singleLetters[0];
+    }
+    
+    // Then try letter name pronunciations
+    for (const [letter, pronunciations] of Object.entries(letterMappings)) {
+        for (const pronunciation of pronunciations) {
+            if (upperText.includes(pronunciation)) {
+                // Make sure it's not part of a larger word
+                const regex = new RegExp(`\\b${pronunciation}\\b`);
+                if (regex.test(upperText)) {
+                    return letter;
+                }
+            }
+        }
+    }
+    
+    // Fallback: extract any single letter from the text
+    const anyLetters = upperText.match(/[A-Z]/g);
+    if (anyLetters && anyLetters.length === 1) {
+        return anyLetters[0];
+    }
+    
+    // If multiple letters found, prioritize the current target letter
+    if (anyLetters && anyLetters.length > 1) {
+        const currentTarget = game.alphabetPrompt.currentLetter;
+        if (anyLetters.includes(currentTarget)) {
+            console.log(`🎯 Found target letter "${currentTarget}" among multiple letters`);
+            return currentTarget;
+        }
+        // Otherwise, take the first letter
+        return anyLetters[0];
+    }
+    
+    return null; // No clear letter found
 }
 
 // Check if spoken letter matches current prompt while in circle
 function checkLetterMatch() {
+    const heardLetter = game.speechRecognition.lastHeardLetter;
+    const targetLetter = game.alphabetPrompt.currentLetter;
+    
+    // Case-insensitive comparison (child-friendly)
     if (game.speechRecognition.isInCircle && 
-        game.speechRecognition.lastHeardLetter === game.alphabetPrompt.currentLetter) {
+        heardLetter.toUpperCase() === targetLetter.toUpperCase()) {
         
         // SUCCESS! Both conditions met
         game.score += 5;
         game.successCount++;
         
         // Advance to next letter
-        const currentIndex = game.alphabetPrompt.letters.indexOf(game.alphabetPrompt.currentLetter);
+        const currentIndex = game.alphabetPrompt.letters.indexOf(targetLetter);
         const nextIndex = (currentIndex + 1) % game.alphabetPrompt.letters.length;
         game.alphabetPrompt.currentLetter = game.alphabetPrompt.letters[nextIndex];
         game.alphabetPrompt.changeTimer = 0; // Reset timer
         
-        console.log(`🎉 SUCCESS! Letter ${game.speechRecognition.lastHeardLetter} + Circle Touch = +5 points!`);
+        console.log(`🎉 SUCCESS! Letter "${heardLetter}" matches "${targetLetter}" + Circle Touch = +5 points!`);
         
         // Trigger special success feedback
         triggerLetterSuccessFeedback();
         
         // Reset speech state
         game.speechRecognition.lastHeardLetter = '';
-        game.speechRecognition.isInCircle = false;
+        game.speechRecognition.waitingForSpeech = false;
+    } else if (game.speechRecognition.isInCircle && heardLetter) {
+        // Wrong letter - provide helpful feedback
+        console.log(`❌ Wrong letter! You said "${heardLetter}" but need "${targetLetter}"`);
+        
+        // Add visual feedback for wrong letter
+        game.wrongLetterFeedback = {
+            active: true,
+            timer: 60, // 1 second
+            heardLetter: heardLetter,
+            targetLetter: targetLetter
+        };
     }
 }
 
@@ -306,6 +417,14 @@ function update() {
         game.letterSuccessFeedback.timer--;
         if (game.letterSuccessFeedback.timer <= 0) {
             game.letterSuccessFeedback.active = false;
+        }
+    }
+    
+    // Update wrong letter feedback timer
+    if (game.wrongLetterFeedback && game.wrongLetterFeedback.active) {
+        game.wrongLetterFeedback.timer--;
+        if (game.wrongLetterFeedback.timer <= 0) {
+            game.wrongLetterFeedback.active = false;
         }
     }
     
@@ -648,6 +767,19 @@ function render() {
         ctx.textAlign = 'left';
     }
     
+    // Wrong Letter Feedback (helpful correction)
+    if (game.wrongLetterFeedback && game.wrongLetterFeedback.active) {
+        const alpha = game.wrongLetterFeedback.timer / 60;
+        
+        ctx.fillStyle = `rgba(255, 100, 100, ${alpha})`;
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'center';
+        
+        const wrongText = `You said "${game.wrongLetterFeedback.heardLetter}" - Try "${game.wrongLetterFeedback.targetLetter}"`;
+        ctx.fillText(wrongText, canvas.width / 2, game.safeZone.y + 150);
+        ctx.textAlign = 'left';
+    }
+    
     // Draw danger zones (red areas near edges)
     if (game.aiEnabled) {
         ctx.fillStyle = 'rgba(255, 0, 0, 0.1)';
@@ -720,6 +852,12 @@ function render() {
     ctx.fillText(`Successes: ${game.successCount}`, canvas.width - 200, 60);
     
     // Removed Circle Touches and Zone displays for cleaner UI focused on multi-modal learning
+    
+    // Microphone Status Indicator (top-left corner)
+    ctx.fillStyle = game.speechRecognition.isListening ? '#00ff00' : '#666666';
+    ctx.font = 'bold 16px Arial';
+    const micStatus = game.speechRecognition.isListening ? '🎤 Listening...' : '🎤 Not listening';
+    ctx.fillText(micStatus, 10, 25);
     
     // Speech Status Indicator
     if (game.speechRecognition.waitingForSpeech) {
