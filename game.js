@@ -414,19 +414,28 @@ function relocateGreenCircle() {
 function spawnTargetInSafeArea() {
     const dangerZoneSize = 50; // Same as visual danger zone
     const targetSize = game.target.size;
-    const margin = 10; // Extra safety margin
+    const safetyMargin = 30; // Increased safety margin to ensure target stays in black area
     
-    // Calculate safe area bounds (avoiding danger zones)
-    const minX = dangerZoneSize + targetSize + margin;
-    const maxX = canvas.width - dangerZoneSize - targetSize - margin;
-    const minY = dangerZoneSize + targetSize + margin + 100; // Extra margin for alphabet display
-    const maxY = canvas.height - dangerZoneSize - targetSize - margin - 50; // Extra margin for controls
+    // Calculate safe area bounds (avoiding white danger zones completely)
+    const minX = dangerZoneSize + targetSize + safetyMargin;
+    const maxX = canvas.width - dangerZoneSize - targetSize - safetyMargin;
+    const minY = dangerZoneSize + targetSize + safetyMargin + 120; // Extra margin for alphabet display
+    const maxY = canvas.height - dangerZoneSize - targetSize - safetyMargin - 80; // Extra margin for controls
     
-    // Generate random position within safe area
+    // Ensure we have valid bounds
+    if (maxX <= minX || maxY <= minY) {
+        console.warn('Safe area too small, using center position');
+        game.target.x = canvas.width / 2;
+        game.target.y = canvas.height / 2;
+        return;
+    }
+    
+    // Generate random position within safe black area
     game.target.x = Math.random() * (maxX - minX) + minX;
     game.target.y = Math.random() * (maxY - minY) + minY;
     
-    console.log(`🎯 Target spawned in safe area at (${Math.round(game.target.x)}, ${Math.round(game.target.y)})`);
+    console.log(`🎯 Target spawned safely in black area at (${Math.round(game.target.x)}, ${Math.round(game.target.y)})`);
+    console.log(`Safe bounds: X(${minX}-${maxX}), Y(${minY}-${maxY})`);
 }
 
 // Complete failure path execution (child-friendly, encouraging)
@@ -447,6 +456,7 @@ function executeFailurePath(failureType, heardLetter, targetLetter) {
     
     if (failureType === 'wrong_letter') {
         const wrongLetterMessages = [
+            "Try again — you can do it!",
             "Try again — say the letter clearly",
             `You said "${heardLetter}" — try saying "${targetLetter}"`,
             "Almost there! Say the letter you see",
@@ -466,6 +476,7 @@ function executeFailurePath(failureType, heardLetter, targetLetter) {
         
     } else if (failureType === 'timeout') {
         const timeoutMessages = [
+            "Try again — you can do it!",
             "Try again — say the letter clearly",
             "I didn't hear you — speak up!",
             "Say the letter out loud when you're ready",
