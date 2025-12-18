@@ -52,6 +52,8 @@ const game = {
         distanceThreshold: 150 // pixels from safe zone center
     },
     touchCounter: 0, // Count circle touches
+    lastTouchTime: 0, // Debounce rapid entries
+    touchDebounceDelay: 30, // frames (0.5 seconds at 60fps)
     keys: {
         up: false,
         down: false,
@@ -237,20 +239,31 @@ function updateSafeZoneStatus() {
         game.dangerZone.active = false; // Boundary is still acceptable
     }
     
-    // CIRCLE TOUCH EVENT DETECTION
-    // Count only when entering the circle (inside or boundary), not while staying
+    // CIRCLE TOUCH EVENT DETECTION WITH RESET LOGIC
+    // Count only when entering the circle (outside → inside/boundary), not while staying
     const isEnteringCircle = (
         (game.previousZoneStatus === 'outside') && 
         (game.zoneStatus === 'inside' || game.zoneStatus === 'boundary')
     );
     
-    if (isEnteringCircle) {
+    // Debounce rapid re-entries to prevent exploitation
+    const timeSinceLastTouch = frameCount - game.lastTouchTime;
+    const canRegisterTouch = timeSinceLastTouch >= game.touchDebounceDelay;
+    
+    if (isEnteringCircle && canRegisterTouch) {
         game.touchCounter++;
-        console.log(`🎯 CIRCLE TOUCH EVENT! Count: ${game.touchCounter}`);
+        game.lastTouchTime = frameCount;
+        console.log(`🎯 CIRCLE TOUCH EVENT! Count: ${game.touchCounter} (Debounced: ${timeSinceLastTouch} frames)`);
         
         // Visual feedback for touch event
         triggerTouchFeedback();
+    } else if (isEnteringCircle && !canRegisterTouch) {
+        console.log(`⏱️ TOUCH DEBOUNCED: Too rapid (${timeSinceLastTouch}/${game.touchDebounceDelay} frames)`);
     }
+    
+    // RESET LOGIC: Leaving circle doesn't reset anything
+    // Re-entering always counts (after debounce period)
+    // This encourages deliberate, controlled movement patterns
     
     // Update danger zone flash timer
     if (game.dangerZone.flashTimer > 0) {
