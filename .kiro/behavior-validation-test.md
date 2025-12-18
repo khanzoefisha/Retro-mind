@@ -21,9 +21,9 @@
 - Danger zone should activate near screen edges
 
 **Test Results:**
-- ✅ **Color Changes**: Green (inside) → Yellow (boundary) → Orange (outside) → Red (danger)
+- ✅ **Color Changes**: Green (inside) → Yellow (boundary) → Orange (outside) → White (danger)
 - ✅ **AI Messages**: "Good control – you're inside the optimal zone" → "Careful – approaching danger zone" → "⚠️ DANGER ZONE: Near left edge"
-- ✅ **Visual Effects**: Flashing red text appears when in danger zone
+- ✅ **Visual Effects**: Flashing white text appears when in danger zone
 - ✅ **Console Logging**: "🚨 DANGER ZONE ACTIVATED: ⚠️ Danger Zone: Too close to left edge"
 
 **Status: PASSED** ✅
@@ -85,7 +85,7 @@
 - ✅ **Zone Transition**: "Zone: INSIDE" → "Zone: OUTSIDE"
 - ✅ **AI Guidance**: "Return to safety – green zone awaits" type messages
 - ✅ **Distance Feedback**: "🏃 OUTSIDE SAFE ZONE: 45px away - return for touch 2!"
-- ✅ **Danger Activation**: When >150px away, danger zone triggers with flashing red
+- ✅ **Danger Activation**: When >150px away, danger zone triggers with flashing white
 
 **Status: PASSED** ✅
 

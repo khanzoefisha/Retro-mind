@@ -67,9 +67,17 @@ const game = {
         isInCircle: false,
         waitingForSpeech: false,
         timeoutTimer: 0,
-        timeoutDuration: 300 // 5 seconds at 60fps to say the letter
+        timeoutDuration: 300, // 5 seconds at 60fps to say the letter
+        attemptProcessed: false, // Lock to prevent repeated triggers
+        mustExitAndReenter: false // Flag requiring exit/re-entry
     },
     successCount: 0, // Count successful letter + touch combinations
+    gameOver: {
+        active: false,
+        reason: '',
+        finalScore: 0,
+        finalSuccesses: 0
+    },
     keys: {
         up: false,
         down: false,
@@ -93,6 +101,66 @@ function showLanding() {
     if (gameContainer) gameContainer.style.display = 'none';
     if (landingScreen) landingScreen.style.display = 'block';
     game.running = false;
+    
+    // Reset game over state
+    game.gameOver.active = false;
+    game.gameOver.reason = '';
+    game.gameOver.finalScore = 0;
+    game.gameOver.finalSuccesses = 0;
+}
+
+function restartGame() {
+    // Reset all game state
+    game.score = 0;
+    game.successCount = 0;
+    game.touchCounter = 0;
+    game.player.x = canvas.width / 2;
+    game.player.y = canvas.height / 2;
+    game.safeZone.x = canvas.width / 2;
+    game.safeZone.y = canvas.height / 2;
+    game.target.x = Math.random() * (canvas.width - 40) + 20;
+    game.target.y = Math.random() * (canvas.height - 40) + 20;
+    game.alphabetPrompt.currentLetter = 'A';
+    game.alphabetPrompt.changeTimer = 0;
+    game.zoneStatus = 'outside';
+    game.previousZoneStatus = 'outside';
+    game.dangerZone.active = false;
+    game.dangerZone.flashTimer = 0;
+    game.speechRecognition.isInCircle = false;
+    game.speechRecognition.waitingForSpeech = false;
+    game.speechRecognition.attemptProcessed = false;
+    game.speechRecognition.mustExitAndReenter = false;
+    game.speechRecognition.lastHeardLetter = '';
+    game.speechRecognition.timeoutTimer = 0;
+    
+    // Reset game over state
+    game.gameOver.active = false;
+    game.gameOver.reason = '';
+    game.gameOver.finalScore = 0;
+    game.gameOver.finalSuccesses = 0;
+    
+    // Restart the game
+    game.running = true;
+    
+    // Restart speech recognition if it was active
+    if (game.speechRecognition.recognition) {
+        try {
+            game.speechRecognition.recognition.stop();
+        } catch (e) {
+            // Ignore errors when stopping
+        }
+        setTimeout(() => {
+            setupSpeechRecognition();
+        }, 100);
+    }
+    
+    gameLoop(); // Restart the game loop
+    console.log('🔄 Game restarted');
+    
+    // Brief visual feedback
+    setTimeout(() => {
+        console.log('✅ Game restart complete');
+    }, 100);
 }
 
 function toggleAI() {
@@ -263,6 +331,12 @@ function checkLetterMatch() {
     const heardLetter = game.speechRecognition.lastHeardLetter;
     const targetLetter = game.alphabetPrompt.currentLetter;
     
+    // STEP 2.6: Check lock condition - prevent repeated triggers
+    if (game.speechRecognition.attemptProcessed) {
+        console.log(`🔒 Attempt already processed - ignoring speech until exit/re-entry`);
+        return;
+    }
+    
     // Case-insensitive comparison (child-friendly)
     if (game.speechRecognition.isInCircle && 
         heardLetter.toUpperCase() === targetLetter.toUpperCase()) {
@@ -317,6 +391,8 @@ function executeSuccessPath(heardLetter, targetLetter) {
     game.speechRecognition.lastHeardLetter = '';
     game.speechRecognition.isInCircle = false;
     game.speechRecognition.waitingForSpeech = false;
+    game.speechRecognition.attemptProcessed = true; // Lock further attempts
+    game.speechRecognition.mustExitAndReenter = false; // Success allows immediate new attempts
 }
 
 // Relocate green circle to new random position
@@ -339,8 +415,13 @@ function relocateGreenCircle() {
 function executeFailurePath(failureType, heardLetter, targetLetter) {
     console.log(`❌ FAILURE PATH: ${failureType} | Heard: "${heardLetter}" | Target: "${targetLetter}"`);
     
+    // STEP 2.7: Updated Score Rules
+    // +5 points → correct spoken letter (handled in success path)
+    // +0 points → touch without speaking (this function)
+    // +0 points → wrong spoken letter (this function)
+    
     // 1. Alphabet does NOT change (stays the same for retry)
-    // 2. Score does NOT increment (no penalty, but no reward)
+    // 2. Score does NOT increment (+0 points for wrong/no speech)
     // 3. Square stays controllable (player can move freely)
     
     // 4. Child-friendly AI feedback based on failure type
@@ -387,10 +468,14 @@ function executeFailurePath(failureType, heardLetter, targetLetter) {
     // Add encouraging message to AI thoughts
     aiThoughts.push(`💪 ${encouragingMessage}`);
     
-    // 5. Reset speech state but keep player in circle for immediate retry
+    // 5. STEP 2.6: Implement lock condition to prevent repeated triggers
     game.speechRecognition.lastHeardLetter = '';
-    game.speechRecognition.timeoutTimer = 0; // Reset timeout for new attempt
-    // Keep waitingForSpeech = true so they can try again immediately
+    game.speechRecognition.timeoutTimer = 0;
+    game.speechRecognition.waitingForSpeech = false; // Stop listening
+    game.speechRecognition.attemptProcessed = true; // Lock further attempts
+    game.speechRecognition.mustExitAndReenter = true; // Require exit/re-entry
+    
+    console.log(`🔒 Attempt processed - must exit and re-enter circle to try again`);
     
     console.log(`💪 Encouraging retry: ${encouragingMessage}`);
 }
@@ -415,6 +500,22 @@ function triggerLetterSuccessFeedback() {
 // Setup keyboard controls
 function setupControls() {
     document.addEventListener('keydown', (e) => {
+        // Game over controls
+        if (game.gameOver.active) {
+            switch(e.key.toLowerCase()) {
+                case 'r':
+                    restartGame();
+                    e.preventDefault();
+                    break;
+                case 'escape':
+                    showLanding();
+                    e.preventDefault();
+                    break;
+            }
+            return; // Don't process movement when game over
+        }
+        
+        // Normal game controls
         switch(e.key.toLowerCase()) {
             case 'arrowup':
             case 'w':
@@ -492,6 +593,9 @@ function update() {
     if (game.keys.right && game.player.x < canvas.width - game.player.size/2) {
         game.player.x += game.player.speed;
     }
+    
+    // Check for danger zone collision (GAME OVER condition)
+    checkDangerZoneCollision();
     
     // Update Safe Zone status
     updateSafeZoneStatus();
@@ -624,6 +728,12 @@ function updateSafeZoneStatus() {
     const canRegisterTouch = timeSinceLastTouch >= game.touchDebounceDelay;
     
     if (isEnteringCircle && canRegisterTouch) {
+        // Check if player must exit and re-enter due to previous attempt
+        if (game.speechRecognition.mustExitAndReenter) {
+            console.log(`🔒 Must exit and re-enter circle after previous attempt`);
+            return; // Block entry until they exit first
+        }
+        
         game.touchCounter++;
         game.lastTouchTime = frameCount;
         
@@ -631,6 +741,7 @@ function updateSafeZoneStatus() {
         game.speechRecognition.isInCircle = true;
         game.speechRecognition.waitingForSpeech = true;
         game.speechRecognition.timeoutTimer = 0; // Start timeout countdown
+        game.speechRecognition.attemptProcessed = false; // Reset attempt lock
         
         console.log(`🎯 CIRCLE ENTERED! Say "${game.alphabetPrompt.currentLetter}" out loud! (5 second window)`);
         
@@ -647,6 +758,8 @@ function updateSafeZoneStatus() {
     if (game.previousZoneStatus !== 'outside' && game.zoneStatus === 'outside') {
         game.speechRecognition.isInCircle = false;
         game.speechRecognition.waitingForSpeech = false;
+        game.speechRecognition.mustExitAndReenter = false; // Reset lock when exiting
+        console.log(`🔓 Exited circle - lock reset, can re-enter for new attempt`);
     }
     
     // RESET LOGIC: Leaving circle doesn't reset anything
@@ -702,6 +815,57 @@ function triggerTouchFeedback() {
     const randomMessage = touchMessages[Math.floor(Math.random() * touchMessages.length)];
     aiThoughts.push(`🎯 ${randomMessage}`);
     console.log('AI Coach (Circle Entry):', randomMessage);
+}
+
+// Check for danger zone collision and trigger game over
+function checkDangerZoneCollision() {
+    if (game.gameOver.active) return; // Already game over
+    
+    const dangerZoneSize = 50; // Same as visual danger zone
+    const playerCenterX = game.player.x;
+    const playerCenterY = game.player.y;
+    const playerRadius = game.player.size / 2;
+    
+    // Check collision with each danger zone edge
+    let inDangerZone = false;
+    let dangerReason = '';
+    
+    // Top danger zone
+    if (playerCenterY - playerRadius <= dangerZoneSize) {
+        inDangerZone = true;
+        dangerReason = 'top edge';
+    }
+    // Bottom danger zone
+    else if (playerCenterY + playerRadius >= canvas.height - dangerZoneSize) {
+        inDangerZone = true;
+        dangerReason = 'bottom edge';
+    }
+    // Left danger zone
+    else if (playerCenterX - playerRadius <= dangerZoneSize) {
+        inDangerZone = true;
+        dangerReason = 'left edge';
+    }
+    // Right danger zone
+    else if (playerCenterX + playerRadius >= canvas.width - dangerZoneSize) {
+        inDangerZone = true;
+        dangerReason = 'right edge';
+    }
+    
+    if (inDangerZone) {
+        triggerGameOver(`Entered danger zone: ${dangerReason}`);
+    }
+}
+
+// Trigger game over
+function triggerGameOver(reason) {
+    game.gameOver.active = true;
+    game.gameOver.reason = reason;
+    game.gameOver.finalScore = game.score;
+    game.gameOver.finalSuccesses = game.successCount;
+    game.running = false;
+    
+    console.log('🚨 GAME OVER:', reason);
+    console.log(`Final Score: ${game.gameOver.finalScore}, Successes: ${game.gameOver.finalSuccesses}`);
 }
 
 // Trigger danger zone warning with visual feedback
@@ -959,9 +1123,9 @@ function render() {
         ctx.stroke();
     }
     
-    // Draw danger zones (red areas near edges)
+    // Draw danger zones (white areas near edges)
     if (game.aiEnabled) {
-        ctx.fillStyle = 'rgba(255, 0, 0, 0.1)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
         const dangerZone = 50;
         // Top danger zone
         ctx.fillRect(0, 0, canvas.width, dangerZone);
@@ -984,10 +1148,10 @@ function render() {
     let outlineColor = null;
     
     if (game.dangerZone.active) {
-        // Flashing red when in danger zone
+        // Flashing white when in danger zone
         const flashIntensity = Math.sin(frameCount * 0.3) * 0.5 + 0.5;
-        playerColor = `rgb(${255}, ${Math.floor(100 * flashIntensity)}, 0)`;
-        outlineColor = '#ff0000'; // Red outline in danger
+        playerColor = `rgb(${Math.floor(255 * flashIntensity)}, ${Math.floor(255 * flashIntensity)}, ${Math.floor(255 * flashIntensity)})`;
+        outlineColor = '#ffffff'; // White outline in danger
     } else if (game.zoneStatus === 'inside') {
         playerColor = '#00ff00'; // Bright green when safe
         outlineColor = '#00cc00'; // Darker green outline
@@ -1039,8 +1203,8 @@ function render() {
     ctx.fillText(micStatus, 10, 25);
     
     // Speech Status Indicator with timeout progress
-    if (game.speechRecognition.waitingForSpeech) {
-        ctx.fillStyle = '#ff6600';
+    if (game.speechRecognition.waitingForSpeech && !game.speechRecognition.attemptProcessed) {
+        ctx.fillStyle = '#ffff00';
         ctx.font = 'bold 18px Arial';
         ctx.fillText(`🎤 Say "${game.alphabetPrompt.currentLetter}"!`, canvas.width - 200, 85);
         
@@ -1061,10 +1225,17 @@ function render() {
         ctx.fillRect(barX, barY, barWidth * (1 - timeProgress), barHeight);
     }
     
+    // Lock Status Indicator (must exit and re-enter)
+    if (game.speechRecognition.mustExitAndReenter && game.speechRecognition.isInCircle) {
+        ctx.fillStyle = '#ffaa00';
+        ctx.font = 'bold 16px Arial';
+        ctx.fillText(`🔒 Exit and re-enter to try again`, canvas.width - 220, 85);
+    }
+    
     // Danger Zone Warning Display (highest priority)
     if (game.dangerZone.active) {
         const flashAlpha = Math.sin(frameCount * 0.4) * 0.5 + 0.5;
-        ctx.fillStyle = `rgba(255, 0, 0, ${flashAlpha})`;
+        ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha})`;
         ctx.font = 'bold 24px Arial';
         
         // Center the warning text
@@ -1073,7 +1244,7 @@ function render() {
         ctx.fillText(warningText, (canvas.width - textWidth) / 2, 100);
         
         // Add warning background
-        ctx.fillStyle = `rgba(255, 0, 0, ${flashAlpha * 0.3})`;
+        ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha * 0.3})`;
         ctx.fillRect((canvas.width - textWidth) / 2 - 10, 75, textWidth + 20, 35);
     }
     
@@ -1081,23 +1252,23 @@ function render() {
     if (game.aiEnabled) {
         ctx.fillStyle = '#00ff00';
         ctx.font = '16px Arial';
-        ctx.fillText('AI Coach: ON', 10, 25);
+        ctx.fillText('AI Coach: ON', 10, 45);
         
         // Display AI coaching thoughts
         ctx.font = '12px Arial';
         ctx.fillStyle = '#88ff88';
         aiThoughts.forEach((thought, index) => {
-            ctx.fillText(thought, 10, 50 + (index * 15));
+            ctx.fillText(thought, 10, 70 + (index * 15));
         });
     }
     
     // Alphabet Prompt Display (top center, high contrast)
-    ctx.fillStyle = '#00ff00'; // Retro green
+    ctx.fillStyle = '#ffff00'; // Bright yellow
     ctx.font = 'bold 72px Arial';
     ctx.textAlign = 'center';
     
     // Add subtle glow effect for better visibility
-    ctx.shadowColor = '#00ff00';
+    ctx.shadowColor = '#ffff00';
     ctx.shadowBlur = 10;
     
     ctx.fillText(game.alphabetPrompt.currentLetter, canvas.width / 2, 80);
@@ -1108,8 +1279,40 @@ function render() {
     
     // Letter change progress indicator (subtle)
     const progress = game.alphabetPrompt.changeTimer / game.alphabetPrompt.changeInterval;
-    ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+    ctx.fillStyle = 'rgba(255, 255, 0, 0.3)';
     ctx.fillRect(canvas.width / 2 - 50, 90, 100 * progress, 3);
+    
+    // Game Over Screen
+    if (game.gameOver.active) {
+        // Semi-transparent overlay
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Game Over title
+        ctx.fillStyle = '#ff0000';
+        ctx.font = 'bold 48px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 100);
+        
+        // Reason
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 24px Arial';
+        ctx.fillText(`Reason: ${game.gameOver.reason}`, canvas.width / 2, canvas.height / 2 - 50);
+        
+        // Final stats
+        ctx.fillStyle = '#00ff00';
+        ctx.font = '20px Arial';
+        ctx.fillText(`Final Score: ${game.gameOver.finalScore}`, canvas.width / 2, canvas.height / 2);
+        ctx.fillText(`Letter Successes: ${game.gameOver.finalSuccesses}`, canvas.width / 2, canvas.height / 2 + 30);
+        
+        // Instructions
+        ctx.fillStyle = '#ffff00';
+        ctx.font = '18px Arial';
+        ctx.fillText('Press R to Restart or ESC to Return to Menu', canvas.width / 2, canvas.height / 2 + 80);
+        
+        ctx.textAlign = 'left';
+        return; // Don't render game elements when game over
+    }
     
     // Controls instruction
     ctx.fillStyle = '#666';
