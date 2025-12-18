@@ -138,6 +138,10 @@ function restartGame() {
     game.gameOver.finalScore = 0;
     game.gameOver.finalSuccesses = 0;
     
+    // Reset AI Coach state
+    aiThoughts = [];
+    frameCount = 0;
+    
     // Restart the game
     game.running = true;
     
@@ -155,6 +159,12 @@ function restartGame() {
     
     gameLoop(); // Restart the game loop
     console.log('🔄 Game restarted');
+    
+    // Add AI Coach restart message
+    if (game.aiEnabled) {
+        aiThoughts.push("🤖 AI Coach restarted - ready to help!");
+        console.log('🤖 AI Coach restarted and ready');
+    }
     
     // Brief visual feedback
     setTimeout(() => {
@@ -209,23 +219,37 @@ function setupSpeechRecognition() {
             game.speechRecognition.recognition.onerror = function(event) {
                 console.error('🎤 Speech recognition error:', event.error);
                 game.speechRecognition.isListening = false;
+                game.speechRecognition.errorOccurred = true;
                 
                 // Handle specific errors
                 if (event.error === 'not-allowed' || event.error === 'permission-denied') {
                     console.error('🎤 Microphone permission denied. Please allow microphone access.');
-                    alert('Please allow microphone access to use voice features. Click the microphone icon in your browser address bar.');
+                    game.speechRecognition.permissionDenied = true;
+                    // Don't show alert immediately, let user click to try again
                 } else if (event.error === 'no-speech') {
                     console.log('🎤 No speech detected, continuing...');
+                    game.speechRecognition.errorOccurred = false; // This is not a real error
                     // Don't restart immediately for no-speech errors
-                    setTimeout(startSpeechRecognition, 1000);
+                    setTimeout(() => {
+                        if (game.running && !game.speechRecognition.permissionDenied) {
+                            startSpeechRecognition();
+                        }
+                    }, 1000);
                 } else {
-                    // For other errors, try to restart
-                    setTimeout(startSpeechRecognition, 1000);
+                    // For other errors, try to restart after a delay
+                    setTimeout(() => {
+                        if (game.running && !game.speechRecognition.permissionDenied) {
+                            game.speechRecognition.errorOccurred = false;
+                            startSpeechRecognition();
+                        }
+                    }, 2000);
                 }
             };
             
             game.speechRecognition.recognition.onstart = function() {
                 game.speechRecognition.isListening = true;
+                game.speechRecognition.errorOccurred = false;
+                game.speechRecognition.permissionDenied = false;
                 console.log('🎤 Speech recognition started - listening...');
             };
             
@@ -234,27 +258,35 @@ function setupSpeechRecognition() {
                 console.log('🎤 Speech recognition ended');
                 
                 // Only restart if game is still running and no error occurred
-                if (game.running && !game.speechRecognition.errorOccurred) {
+                if (game.running && !game.speechRecognition.errorOccurred && !game.speechRecognition.permissionDenied) {
                     setTimeout(startSpeechRecognition, 500);
                 }
             };
             
-            // Start listening
-            startSpeechRecognition();
+            // Try to start listening automatically
+            setTimeout(() => {
+                startSpeechRecognition();
+            }, 1000); // Give a moment for the page to fully load
             
         } catch (error) {
             console.error('🎤 Failed to initialize speech recognition:', error);
-            alert('Speech recognition failed to initialize. Please refresh the page and allow microphone access.');
+            game.speechRecognition.permissionDenied = true;
         }
     } else {
         console.log('⚠️ Speech recognition not supported in this browser');
-        alert('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari for voice features.');
+        game.speechRecognition.notSupported = true;
     }
 }
 
 // Helper function to start speech recognition with error handling
 function startSpeechRecognition() {
     if (!game.speechRecognition.recognition || !game.running) return;
+    
+    // Don't try to start if already listening
+    if (game.speechRecognition.isListening) {
+        console.log('🎤 Speech recognition already active');
+        return;
+    }
     
     try {
         game.speechRecognition.errorOccurred = false;
@@ -263,12 +295,44 @@ function startSpeechRecognition() {
     } catch (error) {
         console.error('🎤 Failed to start speech recognition:', error);
         game.speechRecognition.isListening = false;
+        game.speechRecognition.errorOccurred = true;
         
-        // Try again after a delay
-        if (game.running) {
-            setTimeout(startSpeechRecognition, 2000);
+        // If it's an invalid state error, the recognition might already be running
+        if (error.name === 'InvalidStateError') {
+            console.log('🎤 Speech recognition already running');
+            return;
+        }
+        
+        // Try again after a delay for other errors
+        if (game.running && !game.speechRecognition.permissionDenied) {
+            setTimeout(() => {
+                game.speechRecognition.errorOccurred = false;
+                startSpeechRecognition();
+            }, 2000);
         }
     }
+}
+
+// Manual function to request microphone permission and start speech recognition
+function requestSpeechPermission() {
+    if (game.speechRecognition.notSupported) {
+        alert('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari for voice features.');
+        return;
+    }
+    
+    if (!game.speechRecognition.recognition) {
+        setupSpeechRecognition();
+        return;
+    }
+    
+    // Reset permission flags
+    game.speechRecognition.permissionDenied = false;
+    game.speechRecognition.errorOccurred = false;
+    
+    console.log('🎤 Requesting microphone permission...');
+    
+    // Try to start speech recognition (this will trigger permission request)
+    startSpeechRecognition();
 }
 
 // Handle speech recognition results with child-friendly matching
@@ -610,7 +674,17 @@ function setupControls() {
     canvas.addEventListener('click', () => {
         if (!game.speechRecognition.isListening && game.running) {
             console.log('🎤 Manual speech recognition start requested');
-            startSpeechRecognition();
+            requestSpeechPermission();
+        }
+    });
+    
+    // Also add click handler to the entire document for easier access
+    document.addEventListener('click', (e) => {
+        // Only handle clicks when speech recognition is not active and game is running
+        if (!game.speechRecognition.isListening && game.running && 
+            (game.speechRecognition.permissionDenied || game.speechRecognition.errorOccurred)) {
+            console.log('🎤 Click detected - attempting to start speech recognition');
+            requestSpeechPermission();
         }
     });
 

@@ -299,6 +299,10 @@
             game.gameOver.finalScore = 0;
             game.gameOver.finalSuccesses = 0;
             
+            // Reset AI Coach state
+            aiThoughts = [];
+            frameCount = 0;
+            
             // Restart the game
             game.running = true;
             
@@ -316,6 +320,12 @@
             
             gameLoop(); // Restart the game loop
             console.log('🔄 Game restarted');
+            
+            // Add AI Coach restart message
+            if (game.aiEnabled) {
+                aiThoughts.push("🤖 AI Coach restarted - ready to help!");
+                console.log('🤖 AI Coach restarted and ready');
+            }
             
             // Brief visual feedback
             setTimeout(() => {
