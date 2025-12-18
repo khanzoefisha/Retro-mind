@@ -719,21 +719,13 @@ function render() {
     ctx.font = 'bold 24px Arial';
     ctx.fillText(`Successes: ${game.successCount}`, canvas.width - 200, 60);
     
-    // Touch Counter Display
-    ctx.fillStyle = '#00ffff';
-    ctx.font = '16px Arial';
-    ctx.fillText(`Circle Touches: ${game.touchCounter}`, canvas.width - 180, 85);
-    
-    // Zone Status Display
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '14px Arial';
-    ctx.fillText(`Zone: ${game.zoneStatus.toUpperCase()}`, canvas.width - 150, 105);
+    // Removed Circle Touches and Zone displays for cleaner UI focused on multi-modal learning
     
     // Speech Status Indicator
     if (game.speechRecognition.waitingForSpeech) {
         ctx.fillStyle = '#ff6600';
-        ctx.font = 'bold 16px Arial';
-        ctx.fillText(`🎤 Say "${game.alphabetPrompt.currentLetter}"!`, canvas.width - 180, 125);
+        ctx.font = 'bold 18px Arial';
+        ctx.fillText(`🎤 Say "${game.alphabetPrompt.currentLetter}"!`, canvas.width - 200, 85);
     }
     
     // Danger Zone Warning Display (highest priority)

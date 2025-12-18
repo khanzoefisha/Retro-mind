@@ -444,15 +444,7 @@
             ctx.font = '20px Arial';
             ctx.fillText(`Score: ${game.score}`, canvas.width - 120, 30);
             
-            // Touch Counter Display (top-right corner, clean and visible)
-            ctx.fillStyle = '#00ffff';
-            ctx.font = 'bold 22px Arial';
-            ctx.fillText(`Circle Touches: ${game.touchCounter}`, canvas.width - 220, 60);
-            
-            // Zone Status Display
-            ctx.fillStyle = '#ffffff';
-            ctx.font = '16px Arial';
-            ctx.fillText(`Zone: ${game.zoneStatus.toUpperCase()}`, canvas.width - 150, 85);
+            // Removed Circle Touches and Zone displays for cleaner UI focused on multi-modal learning
             
             // AI Coach display
             if (game.aiEnabled) {
