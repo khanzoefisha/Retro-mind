@@ -265,20 +265,8 @@ function checkLetterMatch() {
     if (game.speechRecognition.isInCircle && 
         heardLetter.toUpperCase() === targetLetter.toUpperCase()) {
         
-        // SUCCESS! Both conditions met
-        game.score += 5;
-        game.successCount++;
-        
-        // Advance to next letter
-        const currentIndex = game.alphabetPrompt.letters.indexOf(targetLetter);
-        const nextIndex = (currentIndex + 1) % game.alphabetPrompt.letters.length;
-        game.alphabetPrompt.currentLetter = game.alphabetPrompt.letters[nextIndex];
-        game.alphabetPrompt.changeTimer = 0; // Reset timer
-        
-        console.log(`🎉 SUCCESS! Letter "${heardLetter}" matches "${targetLetter}" + Circle Touch = +5 points!`);
-        
-        // Trigger special success feedback
-        triggerLetterSuccessFeedback();
+        // SUCCESS! Execute complete success sequence
+        executeSuccessPath(heardLetter, targetLetter);
         
         // Reset speech state
         game.speechRecognition.lastHeardLetter = '';
@@ -297,12 +285,76 @@ function checkLetterMatch() {
     }
 }
 
+// Complete success path execution
+function executeSuccessPath(heardLetter, targetLetter) {
+    // 1. Score +5
+    game.score += 5;
+    
+    // 2. Touch counter +1 (success count)
+    game.successCount++;
+    game.touchCounter++; // Also increment basic touch counter
+    
+    // 3. Change alphabet to new random letter (not sequential)
+    const availableLetters = game.alphabetPrompt.letters.filter(letter => letter !== targetLetter);
+    const randomIndex = Math.floor(Math.random() * availableLetters.length);
+    game.alphabetPrompt.currentLetter = availableLetters[randomIndex];
+    game.alphabetPrompt.changeTimer = 0; // Reset timer
+    
+    // 4. Relocate green circle to new random position (inside black area)
+    relocateGreenCircle();
+    
+    // 5. AI feedback with celebration
+    const celebrationMessages = [
+        "Great job! You said it correctly 🎉",
+        "Perfect! Excellent pronunciation 🎉",
+        "Amazing! You nailed that letter 🎉",
+        "Wonderful! Keep up the great work 🎉",
+        "Outstanding! Letter mastery achieved 🎉"
+    ];
+    const randomMessage = celebrationMessages[Math.floor(Math.random() * celebrationMessages.length)];
+    aiThoughts.push(randomMessage);
+    
+    console.log(`🎉 SUCCESS! "${heardLetter}" = "${targetLetter}" | +5 points | New letter: ${game.alphabetPrompt.currentLetter}`);
+    
+    // 6. Trigger special success feedback
+    triggerLetterSuccessFeedback();
+    
+    // 7. Reset speech state for next challenge
+    game.speechRecognition.lastHeardLetter = '';
+    game.speechRecognition.isInCircle = false;
+    game.speechRecognition.waitingForSpeech = false;
+}
+
+// Relocate green circle to new random position
+function relocateGreenCircle() {
+    // Ensure circle stays within canvas bounds with margin
+    const margin = game.safeZone.radius + 20;
+    const minX = margin;
+    const maxX = canvas.width - margin;
+    const minY = margin + 100; // Extra margin from top for alphabet display
+    const maxY = canvas.height - margin - 50; // Extra margin from bottom for controls
+    
+    // Generate new random position
+    game.safeZone.x = Math.random() * (maxX - minX) + minX;
+    game.safeZone.y = Math.random() * (maxY - minY) + minY;
+    
+    console.log(`🎯 Green circle relocated to (${Math.round(game.safeZone.x)}, ${Math.round(game.safeZone.y)})`);
+}
+
 // Special feedback for successful letter + touch combination
 function triggerLetterSuccessFeedback() {
     game.letterSuccessFeedback = {
         active: true,
         timer: 90, // 1.5 seconds
         scale: 2.0
+    };
+    
+    // Add circle relocation animation
+    game.circleRelocationFeedback = {
+        active: true,
+        timer: 60, // 1 second
+        oldX: game.safeZone.x,
+        oldY: game.safeZone.y
     };
 }
 
@@ -425,6 +477,14 @@ function update() {
         game.wrongLetterFeedback.timer--;
         if (game.wrongLetterFeedback.timer <= 0) {
             game.wrongLetterFeedback.active = false;
+        }
+    }
+    
+    // Update circle relocation feedback timer
+    if (game.circleRelocationFeedback && game.circleRelocationFeedback.active) {
+        game.circleRelocationFeedback.timer--;
+        if (game.circleRelocationFeedback.timer <= 0) {
+            game.circleRelocationFeedback.active = false;
         }
     }
     
@@ -558,17 +618,17 @@ function triggerTouchFeedback() {
     
     // Add special AI message for successful touch with alphabet awareness
     const touchMessages = [
-        "Nice! Circle touched successfully",
-        "Excellent entry! Well controlled",
-        "Perfect! You nailed that entry",
-        "Great job! Smooth circle entry",
-        "Outstanding! Clean touch execution",
-        `Superb! Touch while processing letter ${game.alphabetPrompt.currentLetter}`,
-        `Amazing multitasking with letter ${game.alphabetPrompt.currentLetter}!`
+        "Circle entered! Now say the letter out loud",
+        "Good positioning! Voice recognition ready",
+        "Perfect entry! Speak clearly now",
+        "Great movement! Time to say the letter",
+        "Excellent! Ready for voice input",
+        `In position for letter ${game.alphabetPrompt.currentLetter}!`,
+        `Ready to hear letter ${game.alphabetPrompt.currentLetter}!`
     ];
     const randomMessage = touchMessages[Math.floor(Math.random() * touchMessages.length)];
     aiThoughts.push(`🎯 ${randomMessage}`);
-    console.log('AI Coach (Touch Success):', randomMessage);
+    console.log('AI Coach (Circle Entry):', randomMessage);
 }
 
 // Trigger danger zone warning with visual feedback
@@ -778,6 +838,26 @@ function render() {
         const wrongText = `You said "${game.wrongLetterFeedback.heardLetter}" - Try "${game.wrongLetterFeedback.targetLetter}"`;
         ctx.fillText(wrongText, canvas.width / 2, game.safeZone.y + 150);
         ctx.textAlign = 'left';
+    }
+    
+    // Circle Relocation Animation
+    if (game.circleRelocationFeedback && game.circleRelocationFeedback.active) {
+        const alpha = game.circleRelocationFeedback.timer / 60;
+        
+        // Show "NEW CHALLENGE!" message
+        ctx.fillStyle = `rgba(0, 255, 255, ${alpha})`;
+        ctx.font = 'bold 20px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('🎯 NEW CHALLENGE!', canvas.width / 2, game.safeZone.y - 130);
+        ctx.textAlign = 'left';
+        
+        // Pulsing effect on new circle location
+        const pulseScale = 1 + Math.sin(frameCount * 0.3) * 0.1;
+        ctx.strokeStyle = `rgba(0, 255, 255, ${alpha})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(game.safeZone.x, game.safeZone.y, game.safeZone.radius * pulseScale, 0, 2 * Math.PI);
+        ctx.stroke();
     }
     
     // Draw danger zones (red areas near edges)
