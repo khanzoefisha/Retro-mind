@@ -348,50 +348,87 @@
         function setupSpeechRecognition() {
             if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                game.speechRecognition.recognition = new SpeechRecognition();
                 
-                game.speechRecognition.recognition.continuous = true;
-                game.speechRecognition.recognition.interimResults = false;
-                game.speechRecognition.recognition.lang = 'en-US';
-                
-                game.speechRecognition.recognition.onresult = function(event) {
-                    const lastResult = event.results[event.results.length - 1];
-                    if (lastResult.isFinal) {
-                        const spokenText = lastResult[0].transcript.trim().toUpperCase();
-                        handleSpeechResult(spokenText);
-                    }
-                };
-                
-                game.speechRecognition.recognition.onerror = function(event) {
-                    console.log('Speech recognition error:', event.error);
-                    game.speechRecognition.isListening = false;
-                };
-                
-                game.speechRecognition.recognition.onstart = function() {
-                    game.speechRecognition.isListening = true;
-                    console.log('🎤 Speech recognition started - listening...');
-                };
-                
-                game.speechRecognition.recognition.onend = function() {
-                    game.speechRecognition.isListening = false;
-                    console.log('🎤 Speech recognition ended - restarting...');
-                    // Restart recognition to keep listening
-                    if (game.running) {
-                        setTimeout(() => {
-                            try {
-                                game.speechRecognition.recognition.start();
-                            } catch (e) {
-                                console.log('Speech recognition restart failed:', e);
-                            }
-                        }, 100);
-                    }
-                };
-                
-                // Start listening
-                game.speechRecognition.recognition.start();
-                console.log('🎤 Speech recognition activated - say letters out loud!');
+                try {
+                    game.speechRecognition.recognition = new SpeechRecognition();
+                    
+                    // Configure speech recognition
+                    game.speechRecognition.recognition.continuous = true;
+                    game.speechRecognition.recognition.interimResults = false;
+                    game.speechRecognition.recognition.lang = 'en-US';
+                    game.speechRecognition.recognition.maxAlternatives = 1;
+                    
+                    game.speechRecognition.recognition.onresult = function(event) {
+                        const lastResult = event.results[event.results.length - 1];
+                        if (lastResult.isFinal) {
+                            const spokenText = lastResult[0].transcript.trim().toUpperCase();
+                            console.log('🎤 Speech detected:', spokenText);
+                            handleSpeechResult(spokenText);
+                        }
+                    };
+                    
+                    game.speechRecognition.recognition.onerror = function(event) {
+                        console.error('🎤 Speech recognition error:', event.error);
+                        game.speechRecognition.isListening = false;
+                        
+                        // Handle specific errors
+                        if (event.error === 'not-allowed' || event.error === 'permission-denied') {
+                            console.error('🎤 Microphone permission denied. Please allow microphone access.');
+                            alert('Please allow microphone access to use voice features. Click the microphone icon in your browser address bar.');
+                        } else if (event.error === 'no-speech') {
+                            console.log('🎤 No speech detected, continuing...');
+                            // Don't restart immediately for no-speech errors
+                            setTimeout(startSpeechRecognition, 1000);
+                        } else {
+                            // For other errors, try to restart
+                            setTimeout(startSpeechRecognition, 1000);
+                        }
+                    };
+                    
+                    game.speechRecognition.recognition.onstart = function() {
+                        game.speechRecognition.isListening = true;
+                        console.log('🎤 Speech recognition started - listening...');
+                    };
+                    
+                    game.speechRecognition.recognition.onend = function() {
+                        game.speechRecognition.isListening = false;
+                        console.log('🎤 Speech recognition ended');
+                        
+                        // Only restart if game is still running and no error occurred
+                        if (game.running && !game.speechRecognition.errorOccurred) {
+                            setTimeout(startSpeechRecognition, 500);
+                        }
+                    };
+                    
+                    // Start listening
+                    startSpeechRecognition();
+                    
+                } catch (error) {
+                    console.error('🎤 Failed to initialize speech recognition:', error);
+                    alert('Speech recognition failed to initialize. Please refresh the page and allow microphone access.');
+                }
             } else {
                 console.log('⚠️ Speech recognition not supported in this browser');
+                alert('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari for voice features.');
+            }
+        }
+
+        // Helper function to start speech recognition with error handling
+        function startSpeechRecognition() {
+            if (!game.speechRecognition.recognition || !game.running) return;
+            
+            try {
+                game.speechRecognition.errorOccurred = false;
+                game.speechRecognition.recognition.start();
+                console.log('🎤 Speech recognition activated - say letters out loud!');
+            } catch (error) {
+                console.error('🎤 Failed to start speech recognition:', error);
+                game.speechRecognition.isListening = false;
+                
+                // Try again after a delay
+                if (game.running) {
+                    setTimeout(startSpeechRecognition, 2000);
+                }
             }
         }
 
@@ -748,6 +785,14 @@
                     case 'd':
                         game.keys.right = false;
                         break;
+                }
+            });
+            
+            // Add click handler to start speech recognition
+            canvas.addEventListener('click', () => {
+                if (!game.speechRecognition.isListening && game.running) {
+                    console.log('🎤 Manual speech recognition start requested');
+                    startSpeechRecognition();
                 }
             });
         }
@@ -1230,10 +1275,17 @@
             ctx.fillRect(canvas.width / 2 - 50, 90, 100 * progress, 3);
             
             // Microphone Status Indicator (top-left corner)
-            ctx.fillStyle = game.speechRecognition.isListening ? '#00ff00' : '#666666';
+            ctx.fillStyle = game.speechRecognition.isListening ? '#00ff00' : '#ff6600';
             ctx.font = 'bold 16px Arial';
-            const micStatus = game.speechRecognition.isListening ? '🎤 Listening...' : '🎤 Not listening';
+            const micStatus = game.speechRecognition.isListening ? '🎤 Listening...' : '🎤 Click to start voice';
             ctx.fillText(micStatus, 10, 25);
+            
+            // Add click instruction if not listening
+            if (!game.speechRecognition.isListening) {
+                ctx.fillStyle = '#ffaa00';
+                ctx.font = '12px Arial';
+                ctx.fillText('(Click anywhere to enable voice)', 10, 40);
+            }
             
             // Speech Status Indicator with timeout progress
             if (game.speechRecognition.waitingForSpeech && !game.speechRecognition.attemptProcessed) {
