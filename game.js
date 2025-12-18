@@ -334,14 +334,24 @@ function aiCoachAnalysis() {
         // Also trigger danger zone for screen edges
         triggerDangerZone(`⚠️ Danger Zone: Too close to ${screenDangerZones.join(", ")}`);
     }
-    // Priority 3: Safe Zone status with distance feedback
+    // Priority 3: Safe Zone status with progress feedback
     else if (game.zoneStatus === 'inside') {
-        coachMessage = "✅ SAFE ZONE: Perfect positioning!";
+        if (game.touchCounter === 0) {
+            coachMessage = "✅ SAFE ZONE: Great! Now exit and re-enter to score";
+        } else if (game.touchCounter < 5) {
+            coachMessage = `✅ SAFE ZONE: ${game.touchCounter} touches - keep practicing!`;
+        } else {
+            coachMessage = `✅ SAFE ZONE: Excellent! ${game.touchCounter} touches achieved`;
+        }
     } else if (game.zoneStatus === 'boundary') {
         coachMessage = "🎯 SAFE ZONE EDGE: Stay centered for safety";
     } else if (game.zoneStatus === 'outside') {
         const distanceText = Math.round(distanceFromSafeZone - game.safeZone.radius);
-        coachMessage = `🏃 OUTSIDE SAFE ZONE: ${distanceText}px away - return!`;
+        if (game.touchCounter === 0) {
+            coachMessage = `🏃 OUTSIDE SAFE ZONE: Enter circle to start counting!`;
+        } else {
+            coachMessage = `🏃 OUTSIDE SAFE ZONE: ${distanceText}px away - return for touch ${game.touchCounter + 1}!`;
+        }
     }
     // Priority 4: Target guidance
     else if (distanceToTarget < 100) {
@@ -469,10 +479,10 @@ function render() {
     ctx.font = '20px Arial';
     ctx.fillText(`Score: ${game.score}`, canvas.width - 120, 30);
     
-    // Touch Counter Display (prominent)
+    // Touch Counter Display (top-right corner, clean and visible)
     ctx.fillStyle = '#00ffff';
-    ctx.font = 'bold 24px Arial';
-    ctx.fillText(`Touches: ${game.touchCounter}`, canvas.width - 180, 60);
+    ctx.font = 'bold 22px Arial';
+    ctx.fillText(`Circle Touches: ${game.touchCounter}`, canvas.width - 220, 60);
     
     // Zone Status Display
     ctx.fillStyle = '#ffffff';
