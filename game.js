@@ -2,6 +2,12 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
+// Error handling for canvas context
+if (!ctx) {
+    console.error('Canvas 2D context not supported');
+    document.body.innerHTML = '<p style="color: white; text-align: center;">Canvas not supported in this browser</p>';
+}
+
 // Game state
 const game = {
     running: false,
@@ -15,8 +21,13 @@ const game = {
 
 // Initialize game
 function init() {
-    game.running = true;
-    gameLoop();
+    try {
+        game.running = true;
+        gameLoop();
+        console.log('Game initialized successfully');
+    } catch (error) {
+        console.error('Game initialization failed:', error);
+    }
 }
 
 // Main game loop
