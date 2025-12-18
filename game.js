@@ -690,18 +690,17 @@ function update() {
     }
 }
 
-// Alphabet prompt system for cognitive load
+// Alphabet prompt system - only changes on correct speech input
 function updateAlphabetPrompt() {
+    // Alphabet only changes when user speaks correct letter
+    // Automatic changing is disabled for voice-verified learning
+    
+    // Keep timer running for progress bar display (but don't change letter)
     game.alphabetPrompt.changeTimer++;
     
-    // Change letter every 3 seconds
+    // Reset timer to prevent overflow (but don't change letter)
     if (game.alphabetPrompt.changeTimer >= game.alphabetPrompt.changeInterval) {
-        const currentIndex = game.alphabetPrompt.letters.indexOf(game.alphabetPrompt.currentLetter);
-        const nextIndex = (currentIndex + 1) % game.alphabetPrompt.letters.length;
-        game.alphabetPrompt.currentLetter = game.alphabetPrompt.letters[nextIndex];
         game.alphabetPrompt.changeTimer = 0;
-        
-        console.log(`📝 Alphabet Prompt: ${game.alphabetPrompt.currentLetter}`);
     }
 }
 
@@ -724,10 +723,8 @@ function updateSafeZoneStatus() {
     } else if (distanceToCenter >= game.safeZone.radius + boundaryThreshold) {
         game.zoneStatus = 'outside';
         
-        // Trigger danger zone if exceeding distance threshold
-        if (distanceToCenter > game.dangerZone.distanceThreshold) {
-            triggerDangerZone("⚠️ Danger Zone: You're leaving the optimal area");
-        }
+        // Distance-based warnings disabled - only edge-based game over is active
+        // Players can move freely in the black area without warnings
     } else {
         game.zoneStatus = 'boundary';
         game.dangerZone.active = false; // Boundary is still acceptable
@@ -924,11 +921,10 @@ function aiCoachAnalysis() {
     if (game.dangerZone.active) {
         coachMessage = game.dangerZone.warningText;
     }
-    // Priority 2: Screen edge danger zones
+    // Priority 2: Screen edge warnings (visual only, no danger zone activation)
     else if (screenDangerZones.length > 0) {
-        coachMessage = `⚠️ SCREEN EDGE: Near ${screenDangerZones.join(", ")}`;
-        // Also trigger danger zone for screen edges
-        triggerDangerZone(`⚠️ Danger Zone: Too close to ${screenDangerZones.join(", ")}`);
+        coachMessage = `⚠️ Approaching edge: Near ${screenDangerZones.join(", ")}`;
+        // No danger zone activation - only game over when actually entering white areas
     }
     // Priority 3: Safe Zone status with varied, state-based feedback
     else if (game.zoneStatus === 'inside') {
