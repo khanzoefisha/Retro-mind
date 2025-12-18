@@ -287,6 +287,18 @@ function triggerTouchFeedback() {
         timer: 30, // 0.5 seconds at 60fps
         scale: 1.5
     };
+    
+    // Add special AI message for successful touch
+    const touchMessages = [
+        "Nice! Circle touched successfully",
+        "Excellent entry! Well controlled",
+        "Perfect! You nailed that entry",
+        "Great job! Smooth circle entry",
+        "Outstanding! Clean touch execution"
+    ];
+    const randomMessage = touchMessages[Math.floor(Math.random() * touchMessages.length)];
+    aiThoughts.push(`🎯 ${randomMessage}`);
+    console.log('AI Coach (Touch Success):', randomMessage);
 }
 
 // Trigger danger zone warning with visual feedback
@@ -334,32 +346,81 @@ function aiCoachAnalysis() {
         // Also trigger danger zone for screen edges
         triggerDangerZone(`⚠️ Danger Zone: Too close to ${screenDangerZones.join(", ")}`);
     }
-    // Priority 3: Safe Zone status with progress feedback
+    // Priority 3: Safe Zone status with varied, state-based feedback
     else if (game.zoneStatus === 'inside') {
+        const insideMessages = [
+            "Good control – you're inside the optimal zone",
+            "Perfect positioning – maintaining safe zone",
+            "Excellent! Staying centered in the green area",
+            "Well done – you're in the sweet spot",
+            "Great control – optimal zone mastered"
+        ];
+        
         if (game.touchCounter === 0) {
-            coachMessage = "✅ SAFE ZONE: Great! Now exit and re-enter to score";
-        } else if (game.touchCounter < 5) {
-            coachMessage = `✅ SAFE ZONE: ${game.touchCounter} touches - keep practicing!`;
+            coachMessage = "✅ First time in! Now exit and re-enter to score";
+        } else if (game.touchCounter < 3) {
+            coachMessage = insideMessages[game.touchCounter % insideMessages.length];
+        } else if (game.touchCounter < 7) {
+            coachMessage = `${insideMessages[Math.floor(Math.random() * insideMessages.length)]} (${game.touchCounter} touches!)`;
         } else {
-            coachMessage = `✅ SAFE ZONE: Excellent! ${game.touchCounter} touches achieved`;
+            coachMessage = `🏆 Master level! ${game.touchCounter} touches – incredible control!`;
         }
     } else if (game.zoneStatus === 'boundary') {
-        coachMessage = "🎯 SAFE ZONE EDGE: Stay centered for safety";
+        const boundaryMessages = [
+            "Careful – approaching danger zone",
+            "🎯 On the edge – stay centered for safety",
+            "Close to boundary – move toward center",
+            "Edge detected – careful positioning needed",
+            "Boundary alert – return to safe center"
+        ];
+        coachMessage = boundaryMessages[frameCount % boundaryMessages.length];
     } else if (game.zoneStatus === 'outside') {
         const distanceText = Math.round(distanceFromSafeZone - game.safeZone.radius);
+        const outsideMessages = [
+            "Return to safety – green zone awaits",
+            "Outside optimal area – head back to center",
+            "Lost the zone – navigate back to green circle",
+            "Drifting away – return to safe positioning",
+            "Off course – green zone needs you back"
+        ];
+        
         if (game.touchCounter === 0) {
-            coachMessage = `🏃 OUTSIDE SAFE ZONE: Enter circle to start counting!`;
+            coachMessage = "🏃 Enter the green circle to begin your journey!";
+        } else if (distanceText < 50) {
+            coachMessage = `Almost there – ${distanceText}px to safety!`;
         } else {
-            coachMessage = `🏃 OUTSIDE SAFE ZONE: ${distanceText}px away - return for touch ${game.touchCounter + 1}!`;
+            const randomMessage = outsideMessages[Math.floor(Math.random() * outsideMessages.length)];
+            coachMessage = `${randomMessage} (Touch ${game.touchCounter + 1} awaits)`;
         }
     }
-    // Priority 4: Target guidance
+    // Priority 4: Dynamic target and movement guidance
     else if (distanceToTarget < 100) {
-        coachMessage = "🎯 Close to target - good positioning!";
+        const closeMessages = [
+            "🎯 Close to target – excellent positioning!",
+            "Target nearby – you're doing great!",
+            "Almost there – target within reach",
+            "Good hunting – target is close",
+            "Nice approach – target in sight"
+        ];
+        coachMessage = closeMessages[Math.floor(Math.random() * closeMessages.length)];
     } else if (distanceToTarget > 200) {
-        coachMessage = "🏃 Target is far - move closer";
+        const farMessages = [
+            "🏃 Target distant – time to move closer",
+            "Long journey ahead – start moving toward target",
+            "Target far away – begin your approach",
+            "Distance detected – navigate toward target",
+            "Far from goal – start closing the gap"
+        ];
+        coachMessage = farMessages[Math.floor(Math.random() * farMessages.length)];
     } else {
-        coachMessage = "✅ Good position - keep moving";
+        const generalMessages = [
+            "✅ Good movement – keep exploring",
+            "Steady progress – maintain your pace",
+            "Nice control – continue navigating",
+            "Smooth movement – you're learning well",
+            "Great technique – keep it up"
+        ];
+        coachMessage = generalMessages[Math.floor(Math.random() * generalMessages.length)];
     }
     
     aiThoughts.push(coachMessage);
