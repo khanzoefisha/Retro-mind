@@ -22,6 +22,14 @@ const game = {
     running: false,
     aiEnabled: true,
     score: 0,
+    // Enhanced state management system
+    state: {
+        mode: 'menu', // 'menu', 'playing', 'paused', 'stopped', 'gameover'
+        previousMode: null,
+        pauseStartTime: 0,
+        totalPauseTime: 0,
+        lastStateChange: 0
+    },
     player: {
         x: canvas.width / 2,
         y: canvas.height / 2,
@@ -54,35 +62,182 @@ const game = {
     touchCounter: 0, // Count circle touches
     lastTouchTime: 0, // Debounce rapid entries
     touchDebounceDelay: 30, // frames (0.5 seconds at 60fps)
+    // Enhanced alphabet progression system
+    alphabet: {
+        currentIndex: 0,
+        letters: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'],
+        lastChangeScore: 0,
+        changeThreshold: 5,
+        transition: {
+            active: false,
+            timer: 0,
+            duration: 60, // frames (1 second at 60fps)
+            newLetter: null
+        }
+    },
+    // Legacy alphabet prompt (will be replaced by alphabet system)
     alphabetPrompt: {
         currentLetter: 'A',
-        changeTimer: 0,
-        changeInterval: 180, // 3 seconds at 60fps
         letters: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
     },
-    speechRecognition: {
-        isListening: false,
-        recognition: null,
-        lastHeardLetter: '',
-        isInCircle: false,
-        waitingForSpeech: false,
-        timeoutTimer: 0,
-        timeoutDuration: 300, // 5 seconds at 60fps to say the letter
-        attemptProcessed: false, // Lock to prevent repeated triggers
-        mustExitAndReenter: false // Flag requiring exit/re-entry
+    // Enhanced control system
+    controls: {
+        instructions: {
+            menu: "Press Start to begin",
+            playing: "S: Pause | ESC: New Game",
+            paused: "S: Stop | R: Restart | ESC: New Game",
+            stopped: "R: Restart | ESC: New Game",
+            gameover: "R: Restart | ESC: New Game"
+        },
+        visible: true,
+        fadeTimer: 0,
+        lastInput: null,
+        inputDebounceDelay: 10, // frames to prevent rapid inputs
+        // Enhanced UI feedback system
+        stateTransition: {
+            active: false,
+            timer: 0,
+            duration: 90, // 1.5 seconds at 60fps
+            fromState: null,
+            toState: null,
+            message: ''
+        },
+        inputFeedback: {
+            active: false,
+            timer: 0,
+            duration: 60, // 1 second at 60fps
+            action: null,
+            message: '',
+            color: '#00ff00'
+        }
     },
-    successCount: 0, // Count successful letter + touch combinations
     gameOver: {
         active: false,
         reason: '',
         finalScore: 0,
-        finalSuccesses: 0
+        finalTouches: 0
     },
     keys: {
         up: false,
         down: false,
         left: false,
         right: false
+    }
+};
+
+// Enhanced State Management System
+const GameStateManager = {
+    // Valid state transitions
+    validTransitions: {
+        'menu': ['playing'],
+        'playing': ['paused', 'gameover', 'menu'],
+        'paused': ['playing', 'stopped', 'menu'],
+        'stopped': ['playing', 'menu'],
+        'gameover': ['playing', 'menu']
+    },
+
+    // Transition to new state with validation
+    transitionTo(newState, frameCount = 0) {
+        const currentState = game.state.mode;
+        
+        // Validate transition
+        if (!this.isValidTransition(currentState, newState)) {
+            console.warn(`Invalid state transition: ${currentState} -> ${newState}`);
+            return false;
+        }
+
+        // Store previous state
+        game.state.previousMode = currentState;
+        game.state.lastStateChange = frameCount;
+
+        // Handle pause timing
+        if (currentState === 'playing' && newState === 'paused') {
+            game.state.pauseStartTime = frameCount;
+        } else if (currentState === 'paused' && newState === 'playing') {
+            // Add pause duration to total
+            if (game.state.pauseStartTime > 0) {
+                game.state.totalPauseTime += frameCount - game.state.pauseStartTime;
+            }
+            game.state.pauseStartTime = 0;
+        } else if (newState === 'playing' || newState === 'menu') {
+            // Reset pause timers on new game or menu return
+            game.state.pauseStartTime = 0;
+            if (newState === 'playing') {
+                game.state.totalPauseTime = 0;
+            }
+        }
+
+        // Update state
+        game.state.mode = newState;
+        
+        // Update running flag for compatibility
+        game.running = (newState === 'playing');
+
+        // Trigger visual feedback for state transition
+        this.triggerStateTransitionFeedback(currentState, newState);
+
+        console.log(`State transition: ${currentState} -> ${newState}`);
+        return true;
+    },
+
+    // Trigger visual feedback for state transitions
+    triggerStateTransitionFeedback(fromState, toState) {
+        const transitionMessages = {
+            'menu->playing': '🎮 GAME STARTED',
+            'playing->paused': '⏸️ GAME PAUSED',
+            'paused->playing': '▶️ GAME RESUMED',
+            'paused->stopped': '⏹️ GAME STOPPED',
+            'stopped->playing': '🔄 GAME RESTARTED',
+            'playing->gameover': '💀 GAME OVER',
+            'gameover->playing': '🆕 NEW GAME',
+            'playing->menu': '🏠 RETURNING TO MENU',
+            'paused->menu': '🏠 RETURNING TO MENU',
+            'stopped->menu': '🏠 RETURNING TO MENU'
+        };
+
+        const transitionKey = `${fromState}->${toState}`;
+        const message = transitionMessages[transitionKey] || `${fromState.toUpperCase()} → ${toState.toUpperCase()}`;
+
+        game.controls.stateTransition.active = true;
+        game.controls.stateTransition.timer = game.controls.stateTransition.duration;
+        game.controls.stateTransition.fromState = fromState;
+        game.controls.stateTransition.toState = toState;
+        game.controls.stateTransition.message = message;
+
+        console.log(`🎬 State transition feedback: ${message}`);
+    },
+
+    // Check if transition is valid
+    isValidTransition(fromState, toState) {
+        const validStates = this.validTransitions[fromState];
+        return validStates && validStates.includes(toState);
+    },
+
+    // Get current effective game time (excluding pause time)
+    getEffectiveGameTime(currentFrame) {
+        let effectiveTime = currentFrame - game.state.totalPauseTime;
+        
+        // Subtract current pause duration if paused
+        if (game.state.mode === 'paused' && game.state.pauseStartTime > 0) {
+            effectiveTime -= (currentFrame - game.state.pauseStartTime);
+        }
+        
+        return Math.max(0, effectiveTime);
+    },
+
+    // Reset state for new game
+    resetForNewGame() {
+        game.state.mode = 'playing';
+        game.state.previousMode = null;
+        game.state.pauseStartTime = 0;
+        game.state.totalPauseTime = 0;
+        game.state.lastStateChange = 0;
+        game.running = true;
+    },
+
+    // Get current control instructions
+    getCurrentInstructions() {
+        return game.controls.instructions[game.state.mode] || "No instructions available";
     }
 };
 
@@ -94,71 +249,95 @@ if (aiToggle) aiToggle.addEventListener('change', toggleAI);
 function startGame() {
     if (landingScreen) landingScreen.style.display = 'none';
     if (gameContainer) gameContainer.style.display = 'block';
+    
+    // Use new state management system
+    GameStateManager.transitionTo('playing');
+    
+    // Trigger control feedback for game start
+    ControlHandler.showControlFeedback('startGame');
+    
     initGame();
 }
 
 function showLanding() {
     if (gameContainer) gameContainer.style.display = 'none';
     if (landingScreen) landingScreen.style.display = 'block';
-    game.running = false;
+    
+    // Use new state management system
+    GameStateManager.transitionTo('menu');
     
     // Reset game over state
     game.gameOver.active = false;
     game.gameOver.reason = '';
     game.gameOver.finalScore = 0;
-    game.gameOver.finalSuccesses = 0;
+    game.gameOver.finalTouches = 0;
 }
 
 function restartGame() {
-    // Reset all game state
+    // Reset all game state to initial values
     game.score = 0;
-    game.successCount = 0;
     game.touchCounter = 0;
+    game.lastTouchTime = 0;
+    
+    // Reset player position to center
     game.player.x = canvas.width / 2;
     game.player.y = canvas.height / 2;
+    
+    // Reset safe zone to center
     game.safeZone.x = canvas.width / 2;
     game.safeZone.y = canvas.height / 2;
-    spawnTargetInSafeArea();
-    game.alphabetPrompt.currentLetter = 'A';
-    game.alphabetPrompt.changeTimer = 0;
+    
+    // Spawn new target in black area
+    spawnTargetInBlackArea();
+    
+    // Reset alphabet system to start with 'A' - REQUIREMENT 1.3
+    AlphabetController.reset();
+    
+    // Reset zone status
     game.zoneStatus = 'outside';
     game.previousZoneStatus = 'outside';
+    
+    // Reset danger zone state
     game.dangerZone.active = false;
     game.dangerZone.flashTimer = 0;
-    game.speechRecognition.isInCircle = false;
-    game.speechRecognition.waitingForSpeech = false;
-    game.speechRecognition.attemptProcessed = false;
-    game.speechRecognition.mustExitAndReenter = false;
-    game.speechRecognition.lastHeardLetter = '';
-    game.speechRecognition.timeoutTimer = 0;
+    game.dangerZone.warningText = '';
     
-    // Reset game over state
+    // Reset game over state completely
     game.gameOver.active = false;
     game.gameOver.reason = '';
     game.gameOver.finalScore = 0;
-    game.gameOver.finalSuccesses = 0;
+    game.gameOver.finalTouches = 0;
+    
+    // Reset movement keys
+    game.keys.up = false;
+    game.keys.down = false;
+    game.keys.left = false;
+    game.keys.right = false;
+    
+    // Reset UI feedback systems
+    game.controls.stateTransition.active = false;
+    game.controls.inputFeedback.active = false;
+    game.controls.fadeTimer = 180; // Show controls for 3 seconds after restart
+    
+    // Reset touch feedback
+    if (game.touchFeedback) {
+        game.touchFeedback.active = false;
+        game.touchFeedback.timer = 0;
+    }
     
     // Reset AI Coach state
     aiThoughts = [];
     frameCount = 0;
     
-    // Restart the game
-    game.running = true;
+    // Use new state management system - REQUIREMENT 2.3
+    GameStateManager.resetForNewGame();
     
-    // Restart speech recognition if it was active
-    if (game.speechRecognition.recognition) {
-        try {
-            game.speechRecognition.recognition.stop();
-        } catch (e) {
-            // Ignore errors when stopping
-        }
-        setTimeout(() => {
-            setupSpeechRecognition();
-        }, 100);
-    }
+    // Trigger control feedback for restart
+    ControlHandler.showControlFeedback('restartGame');
     
-    gameLoop(); // Restart the game loop
-    console.log('🔄 Game restarted');
+    // Restart the game loop
+    gameLoop();
+    console.log('🔄 Game restarted - all state reset to initial values');
     
     // Add AI Coach restart message
     if (game.aiEnabled) {
@@ -166,9 +345,16 @@ function restartGame() {
         console.log('🤖 AI Coach restarted and ready');
     }
     
+    // Verify restart meets requirements
+    const restartValid = verifyGameInitialization();
+    
     // Brief visual feedback
     setTimeout(() => {
-        console.log('✅ Game restart complete');
+        if (restartValid) {
+            console.log('✅ Game restart complete - alphabet starts with A');
+        } else {
+            console.error('❌ Game restart verification failed');
+        }
     }, 100);
 }
 
@@ -177,557 +363,531 @@ function toggleAI() {
     console.log('AI Features:', game.aiEnabled ? 'Enabled' : 'Disabled');
 }
 
-// Initialize game
+// Initialize game - REQUIREMENT 1.3: Ensure alphabet always starts with 'A'
 function initGame() {
     try {
-        game.running = true;
+        // Reset all game state to initial values
+        game.score = 0;
+        game.touchCounter = 0;
+        game.lastTouchTime = 0;
+        
+        // Initialize player position
+        game.player.x = canvas.width / 2;
+        game.player.y = canvas.height / 2;
+        
+        // Initialize safe zone position
+        game.safeZone.x = canvas.width / 2;
+        game.safeZone.y = canvas.height / 2;
+        
+        // Initialize zone status
+        game.zoneStatus = 'outside';
+        game.previousZoneStatus = 'outside';
+        
+        // Initialize danger zone state
+        game.dangerZone.active = false;
+        game.dangerZone.flashTimer = 0;
+        game.dangerZone.warningText = '';
+        
+        // Initialize game over state
+        game.gameOver.active = false;
+        game.gameOver.reason = '';
+        game.gameOver.finalScore = 0;
+        game.gameOver.finalTouches = 0;
+        
+        // Initialize movement keys
+        game.keys.up = false;
+        game.keys.down = false;
+        game.keys.left = false;
+        game.keys.right = false;
+        
+        // Initialize alphabet system to start with 'A' - REQUIREMENT 1.3
+        AlphabetController.reset();
+        
+        // Verify alphabet starts with 'A'
+        const startingLetter = AlphabetController.getCurrentLetter();
+        if (startingLetter !== 'A') {
+            console.error(`Alphabet initialization failed: expected 'A', got '${startingLetter}'`);
+            // Force reset if something went wrong
+            game.alphabet.currentIndex = 0;
+            game.alphabetPrompt.currentLetter = 'A';
+        }
+        
+        // Initialize control display
+        game.controls.visible = true;
+        game.controls.fadeTimer = 180; // Show controls for 3 seconds at start
+        
+        // Initialize UI feedback systems
+        game.controls.stateTransition.active = false;
+        game.controls.inputFeedback.active = false;
+        
+        // Initialize AI Coach
+        aiThoughts = [];
+        frameCount = 0;
+        
+        // Spawn initial target
+        spawnTargetInBlackArea();
+        
+        // State is already set by GameStateManager.transitionTo('playing')
         setupControls();
-        setupSpeechRecognition();
         gameLoop();
-        console.log('Game initialized successfully');
+        
+        // Verify initialization meets requirements
+        const initializationValid = verifyGameInitialization();
+        
+        console.log(`Game initialized successfully - alphabet starts with: ${AlphabetController.getCurrentLetter()}`);
         if (game.aiEnabled) {
             console.log('AI Coach is active - providing guidance');
         }
+        
+        if (!initializationValid) {
+            throw new Error('Game initialization verification failed');
+        }
     } catch (error) {
         console.error('Game initialization failed:', error);
+        // Fallback to menu state on error
+        GameStateManager.transitionTo('menu');
     }
 }
 
-// Setup speech recognition for alphabet prompts
-function setupSpeechRecognition() {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        
-        try {
-            game.speechRecognition.recognition = new SpeechRecognition();
-            
-            // Configure speech recognition
-            game.speechRecognition.recognition.continuous = true;
-            game.speechRecognition.recognition.interimResults = false;
-            game.speechRecognition.recognition.lang = 'en-US';
-            game.speechRecognition.recognition.maxAlternatives = 1;
-            
-            game.speechRecognition.recognition.onresult = function(event) {
-                const lastResult = event.results[event.results.length - 1];
-                if (lastResult.isFinal) {
-                    const spokenText = lastResult[0].transcript.trim().toUpperCase();
-                    console.log('🎤 Speech detected:', spokenText);
-                    handleSpeechResult(spokenText);
-                }
-            };
-            
-            game.speechRecognition.recognition.onerror = function(event) {
-                console.error('🎤 Speech recognition error:', event.error);
-                game.speechRecognition.isListening = false;
-                game.speechRecognition.errorOccurred = true;
-                
-                // Handle specific errors
-                if (event.error === 'not-allowed' || event.error === 'permission-denied') {
-                    console.error('🎤 Microphone permission denied. Please allow microphone access.');
-                    game.speechRecognition.permissionDenied = true;
-                    // Don't show alert immediately, let user click to try again
-                } else if (event.error === 'no-speech') {
-                    console.log('🎤 No speech detected, continuing...');
-                    game.speechRecognition.errorOccurred = false; // This is not a real error
-                    // Don't restart immediately for no-speech errors
-                    setTimeout(() => {
-                        if (game.running && !game.speechRecognition.permissionDenied) {
-                            startSpeechRecognition();
-                        }
-                    }, 1000);
-                } else {
-                    // For other errors, try to restart after a delay
-                    setTimeout(() => {
-                        if (game.running && !game.speechRecognition.permissionDenied) {
-                            game.speechRecognition.errorOccurred = false;
-                            startSpeechRecognition();
-                        }
-                    }, 2000);
-                }
-            };
-            
-            game.speechRecognition.recognition.onstart = function() {
-                game.speechRecognition.isListening = true;
-                game.speechRecognition.errorOccurred = false;
-                game.speechRecognition.permissionDenied = false;
-                console.log('🎤 Speech recognition started - listening...');
-            };
-            
-            game.speechRecognition.recognition.onend = function() {
-                game.speechRecognition.isListening = false;
-                console.log('🎤 Speech recognition ended');
-                
-                // Only restart if game is still running and no error occurred
-                if (game.running && !game.speechRecognition.errorOccurred && !game.speechRecognition.permissionDenied) {
-                    setTimeout(startSpeechRecognition, 500);
-                }
-            };
-            
-            // Try to start listening automatically
-            setTimeout(() => {
-                startSpeechRecognition();
-            }, 1000); // Give a moment for the page to fully load
-            
-        } catch (error) {
-            console.error('🎤 Failed to initialize speech recognition:', error);
-            game.speechRecognition.permissionDenied = true;
-        }
+// Helper function to verify game initialization state - REQUIREMENT 1.3
+function verifyGameInitialization() {
+    const currentLetter = AlphabetController.getCurrentLetter();
+    const isValidInitialization = (
+        currentLetter === 'A' &&
+        game.alphabet.currentIndex === 0 &&
+        game.alphabet.lastChangeScore === 0 &&
+        game.score === 0
+    );
+    
+    if (isValidInitialization) {
+        console.log('✅ Game initialization verified: Alphabet starts with A');
+        return true;
     } else {
-        console.log('⚠️ Speech recognition not supported in this browser - use Chrome for best experience');
-        game.speechRecognition.notSupported = true;
+        console.error(`❌ Game initialization failed verification:
+            Expected: Letter 'A', Index 0, LastChangeScore 0, Score 0
+            Actual: Letter '${currentLetter}', Index ${game.alphabet.currentIndex}, LastChangeScore ${game.alphabet.lastChangeScore}, Score ${game.score}`);
+        return false;
     }
 }
 
-// Helper function to start speech recognition with error handling
-function startSpeechRecognition() {
-    if (!game.speechRecognition.recognition || !game.running) return;
-    
-    // Don't try to start if already listening
-    if (game.speechRecognition.isListening) {
-        console.log('🎤 Speech recognition already active');
-        return;
-    }
-    
-    try {
-        game.speechRecognition.errorOccurred = false;
-        game.speechRecognition.recognition.start();
-        console.log('🎤 Speech recognition activated - say letters out loud!');
-    } catch (error) {
-        console.error('🎤 Failed to start speech recognition:', error);
-        game.speechRecognition.isListening = false;
-        game.speechRecognition.errorOccurred = true;
+// Sequential Alphabet Progression System
+const AlphabetController = {
+    // Check if alphabet should advance based on score
+    checkForAdvancement() {
+        const currentScore = game.score;
+        const threshold = game.alphabet.changeThreshold;
         
-        // If it's an invalid state error, the recognition might already be running
-        if (error.name === 'InvalidStateError') {
-            console.log('🎤 Speech recognition already running');
-            return;
+        // Only advance if we've reached a new threshold and haven't already changed for this score
+        if (currentScore > 0 && 
+            currentScore % threshold === 0 && 
+            currentScore !== game.alphabet.lastChangeScore) {
+            
+            this.advanceToNextLetter();
+            game.alphabet.lastChangeScore = currentScore;
         }
+    },
+
+    // Advance to the next letter in sequence
+    advanceToNextLetter() {
+        const previousIndex = game.alphabet.currentIndex;
+        const previousLetter = game.alphabet.letters[previousIndex];
         
-        // Try again after a delay for other errors
-        if (game.running && !game.speechRecognition.permissionDenied) {
-            setTimeout(() => {
-                game.speechRecognition.errorOccurred = false;
-                startSpeechRecognition();
-            }, 2000);
+        // Advance to next letter with wraparound
+        game.alphabet.currentIndex = (game.alphabet.currentIndex + 1) % game.alphabet.letters.length;
+        const newLetter = game.alphabet.letters[game.alphabet.currentIndex];
+        
+        // Update legacy alphabet prompt for compatibility
+        game.alphabetPrompt.currentLetter = newLetter;
+        
+        // Trigger visual transition
+        this.startTransition(previousLetter, newLetter);
+        
+        console.log(`🔤 Score reached ${game.score}! Alphabet advanced: ${previousLetter} → ${newLetter} (${previousIndex} → ${game.alphabet.currentIndex})`);
+    },
+
+    // Start visual transition effect
+    startTransition(fromLetter, toLetter) {
+        game.alphabet.transition.active = true;
+        game.alphabet.transition.timer = game.alphabet.transition.duration;
+        game.alphabet.transition.newLetter = toLetter;
+        game.alphabet.transition.previousLetter = fromLetter;
+        
+        console.log(`✨ Starting alphabet transition: ${fromLetter} → ${toLetter}`);
+    },
+
+    // Update transition animation
+    updateTransition() {
+        if (game.alphabet.transition.active) {
+            game.alphabet.transition.timer--;
+            
+            if (game.alphabet.transition.timer <= 0) {
+                game.alphabet.transition.active = false;
+                game.alphabet.transition.newLetter = null;
+                game.alphabet.transition.previousLetter = null;
+                console.log('✅ Alphabet transition complete');
+            }
         }
-    }
-}
+    },
 
-// Manual function to request microphone permission and start speech recognition
-function requestSpeechPermission() {
-    if (game.speechRecognition.notSupported) {
-        alert('Speech recognition is not supported in this browser. Please use Chrome (recommended), Edge, or Safari for voice features. Firefox does not support speech recognition.');
-        return;
-    }
-    
-    if (!game.speechRecognition.recognition) {
-        setupSpeechRecognition();
-        return;
-    }
-    
-    // Reset permission flags
-    game.speechRecognition.permissionDenied = false;
-    game.speechRecognition.errorOccurred = false;
-    
-    console.log('🎤 Requesting microphone permission...');
-    
-    // Try to start speech recognition (this will trigger permission request)
-    startSpeechRecognition();
-}
+    // Get current letter for display
+    getCurrentLetter() {
+        return game.alphabet.letters[game.alphabet.currentIndex];
+    },
 
-// Handle speech recognition results with child-friendly matching
-function handleSpeechResult(spokenText) {
-    console.log(`🎤 Heard: "${spokenText}"`);
-    
-    // Enhanced letter extraction with child-friendly rules
-    const detectedLetter = extractSingleLetter(spokenText);
-    if (detectedLetter) {
-        game.speechRecognition.lastHeardLetter = detectedLetter;
-        console.log(`📝 Detected letter: ${game.speechRecognition.lastHeardLetter}`);
+    // Get transition progress (0 to 1)
+    getTransitionProgress() {
+        if (!game.alphabet.transition.active) return 1;
+        return 1 - (game.alphabet.transition.timer / game.alphabet.transition.duration);
+    },
+
+    // Reset alphabet to start position
+    reset() {
+        game.alphabet.currentIndex = 0;
+        game.alphabet.lastChangeScore = 0;
+        game.alphabet.transition.active = false;
+        game.alphabet.transition.timer = 0;
+        game.alphabet.transition.newLetter = null;
+        game.alphabet.transition.previousLetter = null;
         
-        // Check if player is in circle and said the correct letter
-        checkLetterMatch();
-    } else {
-        console.log(`❌ No clear single letter detected in: "${spokenText}"`);
+        // Update legacy system
+        game.alphabetPrompt.currentLetter = game.alphabet.letters[0];
+        
+        console.log('🔄 Alphabet system reset to: A');
     }
+};
+
+// Legacy function for compatibility - now uses sequential system
+function checkAlphabetChange() {
+    AlphabetController.checkForAdvancement();
 }
 
 // Child-friendly letter extraction with robust matching rules
-function extractSingleLetter(spokenText) {
-    // Convert to uppercase for case-insensitive matching
-    const upperText = spokenText.toUpperCase();
-    
-    // Common letter pronunciations and variations
-    const letterMappings = {
-        'A': ['A', 'AY', 'EH'],
-        'B': ['B', 'BE', 'BEE'],
-        'C': ['C', 'SEE', 'CEE'],
-        'D': ['D', 'DEE'],
-        'E': ['E', 'EE'],
-        'F': ['F', 'EF', 'EFF'],
-        'G': ['G', 'GEE', 'JEE'],
-        'H': ['H', 'AITCH', 'HAITCH'],
-        'I': ['I', 'EYE'],
-        'J': ['J', 'JAY'],
-        'K': ['K', 'KAY'],
-        'L': ['L', 'EL', 'ELL'],
-        'M': ['M', 'EM'],
-        'N': ['N', 'EN'],
-        'O': ['O', 'OH'],
-        'P': ['P', 'PEE'],
-        'Q': ['Q', 'CUE', 'QUEUE'],
-        'R': ['R', 'AR', 'ARE'],
-        'S': ['S', 'ES', 'ESS'],
-        'T': ['T', 'TEE'],
-        'U': ['U', 'YOU'],
-        'V': ['V', 'VEE'],
-        'W': ['W', 'DOUBLE U', 'DOUBLE YOU'],
-        'X': ['X', 'EX'],
-        'Y': ['Y', 'WHY'],
-        'Z': ['Z', 'ZED', 'ZEE']
-    };
-    
-    // First, try exact single letter match (most common)
-    const singleLetters = upperText.match(/\b[A-Z]\b/g);
-    if (singleLetters && singleLetters.length === 1) {
-        return singleLetters[0];
-    }
-    
-    // Then try letter name pronunciations
-    for (const [letter, pronunciations] of Object.entries(letterMappings)) {
-        for (const pronunciation of pronunciations) {
-            if (upperText.includes(pronunciation)) {
-                // Make sure it's not part of a larger word
-                const regex = new RegExp(`\\b${pronunciation}\\b`);
-                if (regex.test(upperText)) {
-                    return letter;
-                }
-            }
-        }
-    }
-    
-    // Fallback: extract any single letter from the text
-    const anyLetters = upperText.match(/[A-Z]/g);
-    if (anyLetters && anyLetters.length === 1) {
-        return anyLetters[0];
-    }
-    
-    // If multiple letters found, prioritize the current target letter
-    if (anyLetters && anyLetters.length > 1) {
-        const currentTarget = game.alphabetPrompt.currentLetter;
-        if (anyLetters.includes(currentTarget)) {
-            console.log(`🎯 Found target letter "${currentTarget}" among multiple letters`);
-            return currentTarget;
-        }
-        // Otherwise, take the first letter
-        return anyLetters[0];
-    }
-    
-    return null; // No clear letter found
-}
-
-// Check if spoken letter matches current prompt while in circle
-function checkLetterMatch() {
-    const heardLetter = game.speechRecognition.lastHeardLetter;
-    const targetLetter = game.alphabetPrompt.currentLetter;
-    
-    // STEP 2.6: Check lock condition - prevent repeated triggers
-    if (game.speechRecognition.attemptProcessed) {
-        console.log(`🔒 Attempt already processed - ignoring speech until exit/re-entry`);
-        return;
-    }
-    
-    // Case-insensitive comparison (child-friendly)
-    if (game.speechRecognition.isInCircle && 
-        heardLetter.toUpperCase() === targetLetter.toUpperCase()) {
-        
-        // SUCCESS! Execute complete success sequence
-        executeSuccessPath(heardLetter, targetLetter);
-        
-        // Reset speech state
-        game.speechRecognition.lastHeardLetter = '';
-        game.speechRecognition.waitingForSpeech = false;
-    } else if (game.speechRecognition.isInCircle && heardLetter) {
-        // Wrong letter - execute failure path
-        executeFailurePath('wrong_letter', heardLetter, targetLetter);
-    }
-}
-
-// Complete success path execution
-function executeSuccessPath(heardLetter, targetLetter) {
-    // 1. Score +5
-    game.score += 5;
-    
-    // 2. Touch counter +1 (success count)
-    game.successCount++;
-    game.touchCounter++; // Also increment basic touch counter
-    
-    // 3. Change alphabet to new random letter (not sequential)
-    const availableLetters = game.alphabetPrompt.letters.filter(letter => letter !== targetLetter);
-    const randomIndex = Math.floor(Math.random() * availableLetters.length);
-    game.alphabetPrompt.currentLetter = availableLetters[randomIndex];
-    game.alphabetPrompt.changeTimer = 0; // Reset timer
-    
-    // 4. Relocate green circle to new random position (inside black area)
-    relocateGreenCircle();
-    
-    // 5. AI feedback with celebration
-    const celebrationMessages = [
-        "Great job! You said it correctly 🎉",
-        "Perfect! Excellent pronunciation 🎉",
-        "Amazing! You nailed that letter 🎉",
-        "Wonderful! Keep up the great work 🎉",
-        "Outstanding! Letter mastery achieved 🎉"
-    ];
-    const randomMessage = celebrationMessages[Math.floor(Math.random() * celebrationMessages.length)];
-    aiThoughts.push(randomMessage);
-    
-    console.log(`🎉 SUCCESS! "${heardLetter}" = "${targetLetter}" | +5 points | New letter: ${game.alphabetPrompt.currentLetter}`);
-    
-    // 6. Trigger special success feedback
-    triggerLetterSuccessFeedback();
-    
-    // 7. Reset speech state for next challenge
-    game.speechRecognition.lastHeardLetter = '';
-    game.speechRecognition.isInCircle = false;
-    game.speechRecognition.waitingForSpeech = false;
-    game.speechRecognition.attemptProcessed = true; // Lock further attempts
-    game.speechRecognition.mustExitAndReenter = false; // Success allows immediate new attempts
-}
-
-// Relocate green circle to new random position
-function relocateGreenCircle() {
-    // Ensure circle stays within canvas bounds with margin
-    const margin = game.safeZone.radius + 20;
-    const minX = margin;
-    const maxX = canvas.width - margin;
-    const minY = margin + 100; // Extra margin from top for alphabet display
-    const maxY = canvas.height - margin - 50; // Extra margin from bottom for controls
-    
-    // Generate new random position
-    game.safeZone.x = Math.random() * (maxX - minX) + minX;
-    game.safeZone.y = Math.random() * (maxY - minY) + minY;
-    
-    console.log(`🎯 Green circle relocated to (${Math.round(game.safeZone.x)}, ${Math.round(game.safeZone.y)})`);
-}
-
-// Spawn target inside the green safe zone circle
-function spawnTargetInSafeArea() {
+// Spawn target in black area (outside green safe zone)
+function spawnTargetInBlackArea() {
+    const dangerZoneSize = 50; // Same as visual danger zone
     const targetSize = game.target.size;
-    const safeZoneRadius = game.safeZone.radius;
-    const margin = targetSize + 10; // Margin to keep target fully inside circle
+    const safetyMargin = 30; // Margin to keep target away from danger zones
     
-    // Calculate maximum spawn radius (inside the green circle)
-    const maxSpawnRadius = safeZoneRadius - margin;
+    // Calculate safe black area bounds (avoiding white danger zones)
+    const minX = dangerZoneSize + targetSize + safetyMargin;
+    const maxX = canvas.width - dangerZoneSize - targetSize - safetyMargin;
+    const minY = dangerZoneSize + targetSize + safetyMargin + 120; // Extra margin for alphabet display
+    const maxY = canvas.height - dangerZoneSize - targetSize - safetyMargin - 80; // Extra margin for controls
     
-    // If the safe zone is too small, spawn at center
-    if (maxSpawnRadius <= 0) {
-        console.warn('Safe zone too small for target, spawning at center');
-        game.target.x = game.safeZone.x;
-        game.target.y = game.safeZone.y;
+    // Ensure we have valid bounds
+    if (maxX <= minX || maxY <= minY) {
+        console.warn('Black area too small, using center position');
+        game.target.x = canvas.width / 2;
+        game.target.y = canvas.height / 2;
         return;
     }
     
-    // Generate random position within the green safe zone circle
-    const angle = Math.random() * 2 * Math.PI; // Random angle
-    const radius = Math.random() * maxSpawnRadius; // Random radius within safe zone
+    let attempts = 0;
+    let validPosition = false;
     
-    // Convert polar coordinates to cartesian coordinates
-    game.target.x = game.safeZone.x + radius * Math.cos(angle);
-    game.target.y = game.safeZone.y + radius * Math.sin(angle);
-    
-    console.log(`🎯 Target spawned inside green safe zone at (${Math.round(game.target.x)}, ${Math.round(game.target.y)})`);
-    console.log(`Safe zone center: (${Math.round(game.safeZone.x)}, ${Math.round(game.safeZone.y)}), radius: ${safeZoneRadius}`);
-}
-
-// Complete failure path execution (child-friendly, encouraging)
-function executeFailurePath(failureType, heardLetter, targetLetter) {
-    console.log(`❌ FAILURE PATH: ${failureType} | Heard: "${heardLetter}" | Target: "${targetLetter}"`);
-    
-    // STEP 2.7: Updated Score Rules
-    // +5 points → correct spoken letter (handled in success path)
-    // +0 points → touch without speaking (this function)
-    // +0 points → wrong spoken letter (this function)
-    
-    // 1. Alphabet does NOT change (stays the same for retry)
-    // 2. Score does NOT increment (+0 points for wrong/no speech)
-    // 3. Square stays controllable (player can move freely)
-    
-    // 4. Child-friendly AI feedback based on failure type
-    let encouragingMessage = '';
-    
-    if (failureType === 'wrong_letter') {
-        const wrongLetterMessages = [
-            "Try again — you can do it!",
-            "Try again — say the letter clearly",
-            `You said "${heardLetter}" — try saying "${targetLetter}"`,
-            "Almost there! Say the letter you see",
-            "Good try! Look at the letter and say it",
-            "Keep trying! You can do this"
-        ];
-        encouragingMessage = wrongLetterMessages[Math.floor(Math.random() * wrongLetterMessages.length)];
+    // Try to find a position outside the green safe zone
+    while (!validPosition && attempts < 50) {
+        // Generate random position within safe black area
+        game.target.x = Math.random() * (maxX - minX) + minX;
+        game.target.y = Math.random() * (maxY - minY) + minY;
         
-        // Visual feedback for wrong letter
-        game.wrongLetterFeedback = {
-            active: true,
-            timer: 120, // 2 seconds (longer for encouragement)
-            heardLetter: heardLetter,
-            targetLetter: targetLetter,
-            message: encouragingMessage
-        };
+        // Check if position is outside the green safe zone
+        const distanceFromSafeZone = Math.sqrt(
+            Math.pow(game.target.x - game.safeZone.x, 2) + 
+            Math.pow(game.target.y - game.safeZone.y, 2)
+        );
         
-    } else if (failureType === 'timeout') {
-        const timeoutMessages = [
-            "Try again — you can do it!",
-            "Try again — say the letter clearly",
-            "I didn't hear you — speak up!",
-            "Say the letter out loud when you're ready",
-            "Take your time — say the letter clearly",
-            "Try speaking the letter again"
-        ];
-        encouragingMessage = timeoutMessages[Math.floor(Math.random() * timeoutMessages.length)];
-        
-        // Visual feedback for timeout
-        game.timeoutFeedback = {
-            active: true,
-            timer: 120, // 2 seconds
-            targetLetter: targetLetter,
-            message: encouragingMessage
-        };
-    }
-    
-    // Add encouraging message to AI thoughts
-    aiThoughts.push(`💪 ${encouragingMessage}`);
-    
-    // 5. STEP 2.6: Implement lock condition to prevent repeated triggers
-    game.speechRecognition.lastHeardLetter = '';
-    game.speechRecognition.timeoutTimer = 0;
-    game.speechRecognition.waitingForSpeech = false; // Stop listening
-    game.speechRecognition.attemptProcessed = true; // Lock further attempts
-    game.speechRecognition.mustExitAndReenter = true; // Require exit/re-entry
-    
-    console.log(`🔒 Attempt processed - must exit and re-enter circle to try again`);
-    
-    console.log(`💪 Encouraging retry: ${encouragingMessage}`);
-}
-
-// Special feedback for successful letter + touch combination
-function triggerLetterSuccessFeedback() {
-    game.letterSuccessFeedback = {
-        active: true,
-        timer: 90, // 1.5 seconds
-        scale: 2.0
-    };
-    
-    // Add circle relocation animation
-    game.circleRelocationFeedback = {
-        active: true,
-        timer: 60, // 1 second
-        oldX: game.safeZone.x,
-        oldY: game.safeZone.y
-    };
-}
-
-// Setup keyboard controls
-function setupControls() {
-    document.addEventListener('keydown', (e) => {
-        // Game over controls
-        if (game.gameOver.active) {
-            switch(e.key.toLowerCase()) {
-                case 'r':
-                    restartGame();
-                    e.preventDefault();
-                    break;
-                case 'escape':
-                    showLanding();
-                    e.preventDefault();
-                    break;
-            }
-            return; // Don't process movement when game over
+        // Target should be outside the green circle (with some margin)
+        if (distanceFromSafeZone > game.safeZone.radius + targetSize + 20) {
+            validPosition = true;
         }
         
-        // Check for stop game command (Shift+S)
-        if (e.key.toLowerCase() === 's' && e.shiftKey) {
-            showLanding();
+        attempts++;
+    }
+    
+    console.log(`🎯 Target spawned in black area at (${Math.round(game.target.x)}, ${Math.round(game.target.y)})`);
+    console.log(`Distance from safe zone: ${Math.round(Math.sqrt(Math.pow(game.target.x - game.safeZone.x, 2) + Math.pow(game.target.y - game.safeZone.y, 2)))}`);
+}
+
+// Centralized Keyboard Control Handler
+const ControlHandler = {
+    // Key mappings for different game states
+    stateBasedControls: {
+        'menu': {
+            'Enter': 'startGame',
+            'Space': 'startGame'
+        },
+        'playing': {
+            's': 'pauseGame',
+            'Escape': 'newGame',
+            // Movement keys handled separately
+            'ArrowUp': 'moveUp',
+            'w': 'moveUp',
+            'ArrowDown': 'moveDown',
+            's': 'moveDown', // Note: 's' has dual purpose - pause or move
+            'ArrowLeft': 'moveLeft',
+            'a': 'moveLeft',
+            'ArrowRight': 'moveRight',
+            'd': 'moveRight'
+        },
+        'paused': {
+            's': 'stopGame',
+            'r': 'restartGame',
+            'Escape': 'newGame'
+        },
+        'stopped': {
+            'r': 'restartGame',
+            'Escape': 'newGame'
+        },
+        'gameover': {
+            'r': 'restartGame',
+            'Escape': 'newGame'
+        }
+    },
+
+    // Input debouncing
+    lastInputTime: 0,
+    lastInputKey: null,
+    debounceDelay: 10, // frames
+
+    // Initialize control handler
+    init() {
+        document.addEventListener('keydown', this.handleKeyDown.bind(this));
+        document.addEventListener('keyup', this.handleKeyUp.bind(this));
+        console.log('🎮 Centralized control handler initialized');
+    },
+
+    // Handle key down events
+    handleKeyDown(e) {
+        const key = e.key;
+        const currentState = game.state.mode;
+        const currentFrame = frameCount || 0;
+
+        // Input debouncing for control keys (not movement)
+        if (this.isControlKey(key) && this.isInputDebounced(key, currentFrame)) {
             e.preventDefault();
             return;
         }
-        
-        // Normal game controls
-        switch(e.key.toLowerCase()) {
-            case 'arrowup':
-            case 'w':
-                game.keys.up = true;
-                e.preventDefault();
-                break;
-            case 'arrowdown':
-            case 's':
-                game.keys.down = true;
-                e.preventDefault();
-                break;
-            case 'arrowleft':
-            case 'a':
-                game.keys.left = true;
-                e.preventDefault();
-                break;
-            case 'arrowright':
-            case 'd':
-                game.keys.right = true;
-                e.preventDefault();
-                break;
-            case 'escape':
-                // Stop game and return to landing screen
-                showLanding();
-                e.preventDefault();
-                break;
-        }
-    });
-    
-    // Add click handler to start speech recognition
-    canvas.addEventListener('click', () => {
-        if (!game.speechRecognition.isListening && game.running) {
-            console.log('🎤 Manual speech recognition start requested');
-            requestSpeechPermission();
-        }
-    });
-    
-    // Also add click handler to the entire document for easier access
-    document.addEventListener('click', (e) => {
-        // Only handle clicks when speech recognition is not active and game is running
-        if (!game.speechRecognition.isListening && game.running && 
-            (game.speechRecognition.permissionDenied || game.speechRecognition.errorOccurred)) {
-            console.log('🎤 Click detected - attempting to start speech recognition');
-            requestSpeechPermission();
-        }
-    });
 
-    document.addEventListener('keyup', (e) => {
-        switch(e.key.toLowerCase()) {
+        // Get valid controls for current state
+        const stateControls = this.stateBasedControls[currentState];
+        if (!stateControls) {
+            console.warn(`No controls defined for state: ${currentState}`);
+            return;
+        }
+
+        // Handle special case for 's' key in playing state
+        if (key.toLowerCase() === 's' && currentState === 'playing') {
+            // Check if it's movement (with other movement keys) or pause command
+            if (this.isMovementContext()) {
+                this.handleMovementKey(key, true);
+            } else {
+                this.executeControlAction('pauseGame', currentFrame);
+                e.preventDefault();
+            }
+            return;
+        }
+
+        // Route to appropriate handler
+        const action = stateControls[key] || stateControls[key.toLowerCase()];
+        if (action) {
+            if (this.isMovementAction(action)) {
+                this.handleMovementKey(key, true);
+            } else {
+                this.executeControlAction(action, currentFrame);
+                e.preventDefault();
+            }
+        }
+
+        // Update debounce tracking for control keys
+        if (this.isControlKey(key)) {
+            this.lastInputTime = currentFrame;
+            this.lastInputKey = key.toLowerCase();
+        }
+    },
+
+    // Handle key up events
+    handleKeyUp(e) {
+        const key = e.key;
+        const currentState = game.state.mode;
+
+        // Only handle movement key releases during gameplay
+        if (currentState === 'playing' || currentState === 'paused') {
+            this.handleMovementKey(key, false);
+        }
+    },
+
+    // Check if input should be debounced
+    isInputDebounced(key, currentFrame) {
+        const timeSinceLastInput = currentFrame - this.lastInputTime;
+        const isSameKey = this.lastInputKey === key.toLowerCase();
+        
+        return isSameKey && timeSinceLastInput < this.debounceDelay;
+    },
+
+    // Check if key is a control key (not movement)
+    isControlKey(key) {
+        const controlKeys = ['s', 'r', 'escape', 'enter', ' '];
+        return controlKeys.includes(key.toLowerCase()) || key === 'Escape';
+    },
+
+    // Check if we're in movement context (other movement keys pressed)
+    isMovementContext() {
+        return game.keys.up || game.keys.down || game.keys.left || game.keys.right;
+    },
+
+    // Check if action is a movement action
+    isMovementAction(action) {
+        const movementActions = ['moveUp', 'moveDown', 'moveLeft', 'moveRight'];
+        return movementActions.includes(action);
+    },
+
+    // Handle movement key presses
+    handleMovementKey(key, isPressed) {
+        const normalizedKey = key.toLowerCase();
+        
+        switch(normalizedKey) {
             case 'arrowup':
             case 'w':
-                game.keys.up = false;
+                game.keys.up = isPressed;
                 break;
             case 'arrowdown':
             case 's':
-                game.keys.down = false;
+                // Only handle as movement if in movement context or explicitly movement
+                if (this.isMovementContext() || game.state.mode !== 'playing') {
+                    game.keys.down = isPressed;
+                }
                 break;
             case 'arrowleft':
             case 'a':
-                game.keys.left = false;
+                game.keys.left = isPressed;
                 break;
             case 'arrowright':
             case 'd':
-                game.keys.right = false;
+                game.keys.right = isPressed;
                 break;
         }
-    });
+    },
+
+    // Execute control actions based on state
+    executeControlAction(action, currentFrame) {
+        console.log(`🎮 Control action: ${action} (state: ${game.state.mode})`);
+
+        switch(action) {
+            case 'startGame':
+                if (game.state.mode === 'menu') {
+                    startGame();
+                }
+                break;
+
+            case 'pauseGame':
+                if (game.state.mode === 'playing') {
+                    GameStateManager.transitionTo('paused', currentFrame);
+                    this.updateControlDisplay();
+                }
+                break;
+
+            case 'stopGame':
+                if (game.state.mode === 'paused') {
+                    GameStateManager.transitionTo('stopped', currentFrame);
+                    this.updateControlDisplay();
+                }
+                break;
+
+            case 'restartGame':
+                if (['paused', 'stopped', 'gameover'].includes(game.state.mode)) {
+                    restartGame();
+                }
+                break;
+
+            case 'newGame':
+                // ESC always starts new game regardless of state
+                if (game.state.mode === 'menu') {
+                    startGame();
+                } else {
+                    showLanding();
+                }
+                break;
+
+            default:
+                console.warn(`Unknown control action: ${action}`);
+        }
+
+        // Provide visual feedback for control input
+        this.showControlFeedback(action);
+    },
+
+    // Update control instruction display
+    updateControlDisplay() {
+        const instructions = GameStateManager.getCurrentInstructions();
+        game.controls.visible = true;
+        game.controls.fadeTimer = 180; // Show for 3 seconds
+        
+        console.log(`📋 Controls updated: ${instructions}`);
+    },
+
+    // Show visual feedback for control input
+    showControlFeedback(action) {
+        // Set control feedback timer for visual confirmation
+        game.controls.lastInput = action;
+        game.controls.fadeTimer = 60; // 1 second feedback
+
+        // Enhanced visual feedback system
+        const feedbackConfig = {
+            'pauseGame': { message: '⏸️ GAME PAUSED', color: '#ffff00' },
+            'stopGame': { message: '⏹️ GAME STOPPED', color: '#ff6600' }, 
+            'restartGame': { message: '🔄 RESTARTING GAME', color: '#00ff00' },
+            'newGame': { message: '🆕 NEW GAME STARTED', color: '#00ffff' },
+            'startGame': { message: '🎮 GAME STARTED', color: '#00ff00' }
+        };
+
+        const config = feedbackConfig[action];
+        if (config) {
+            // Trigger input feedback animation
+            game.controls.inputFeedback.active = true;
+            game.controls.inputFeedback.timer = game.controls.inputFeedback.duration;
+            game.controls.inputFeedback.action = action;
+            game.controls.inputFeedback.message = config.message;
+            game.controls.inputFeedback.color = config.color;
+
+            // Add to AI thoughts for immediate feedback
+            if (aiThoughts) {
+                aiThoughts.push(`🎮 ${config.message}`);
+            }
+
+            console.log(`🎮 Control feedback: ${config.message}`);
+        }
+    },
+
+    // Get current valid controls for display
+    getCurrentValidControls() {
+        const currentState = game.state.mode;
+        const stateControls = this.stateBasedControls[currentState];
+        
+        if (!stateControls) return [];
+
+        return Object.entries(stateControls)
+            .filter(([key, action]) => !this.isMovementAction(action))
+            .map(([key, action]) => ({ key, action }));
+    }
+};
+
+// Setup keyboard controls using centralized handler
+function setupControls() {
+    ControlHandler.init();
 }
 
 // Main game loop
 function gameLoop() {
-    if (!game.running) return;
+    // Check if game should continue running based on state
+    if (game.state.mode === 'menu' || game.state.mode === 'stopped') return;
     
-    update();
+    // Only update game logic when playing
+    if (game.state.mode === 'playing') {
+        update();
+    }
+    
+    // Always render (to show pause screen, etc.)
     render();
     
     requestAnimationFrame(gameLoop);
@@ -741,18 +901,20 @@ let frameCount = 0;
 function update() {
     frameCount++;
     
-    // Handle player movement
-    if (game.keys.up && game.player.y > game.player.size/2) {
-        game.player.y -= game.player.speed;
-    }
-    if (game.keys.down && game.player.y < canvas.height - game.player.size/2) {
-        game.player.y += game.player.speed;
-    }
-    if (game.keys.left && game.player.x > game.player.size/2) {
-        game.player.x -= game.player.speed;
-    }
-    if (game.keys.right && game.player.x < canvas.width - game.player.size/2) {
-        game.player.x += game.player.speed;
+    // Handle player movement (only when playing, not when paused)
+    if (game.state.mode === 'playing') {
+        if (game.keys.up && game.player.y > game.player.size/2) {
+            game.player.y -= game.player.speed;
+        }
+        if (game.keys.down && game.player.y < canvas.height - game.player.size/2) {
+            game.player.y += game.player.speed;
+        }
+        if (game.keys.left && game.player.x > game.player.size/2) {
+            game.player.x -= game.player.speed;
+        }
+        if (game.keys.right && game.player.x < canvas.width - game.player.size/2) {
+            game.player.x += game.player.speed;
+        }
     }
     
     // Check for danger zone collision (GAME OVER condition)
@@ -769,8 +931,10 @@ function update() {
     
     if (distanceToTarget < (game.player.size/2 + game.target.size/2)) {
         game.score++;
-        // Spawn new target in safe area
-        spawnTargetInSafeArea();
+        // Check if alphabet should change (every 5 points)
+        checkAlphabetChange();
+        // Spawn new target in black area
+        spawnTargetInBlackArea();
         console.log('Target hit! Score:', game.score);
     }
     
@@ -782,50 +946,11 @@ function update() {
         }
     }
     
-    // Update letter success feedback timer
-    if (game.letterSuccessFeedback && game.letterSuccessFeedback.active) {
-        game.letterSuccessFeedback.timer--;
-        if (game.letterSuccessFeedback.timer <= 0) {
-            game.letterSuccessFeedback.active = false;
-        }
-    }
+    // Update alphabet transition animation
+    AlphabetController.updateTransition();
     
-    // Update wrong letter feedback timer
-    if (game.wrongLetterFeedback && game.wrongLetterFeedback.active) {
-        game.wrongLetterFeedback.timer--;
-        if (game.wrongLetterFeedback.timer <= 0) {
-            game.wrongLetterFeedback.active = false;
-        }
-    }
-    
-    // Update timeout feedback timer
-    if (game.timeoutFeedback && game.timeoutFeedback.active) {
-        game.timeoutFeedback.timer--;
-        if (game.timeoutFeedback.timer <= 0) {
-            game.timeoutFeedback.active = false;
-        }
-    }
-    
-    // Update circle relocation feedback timer
-    if (game.circleRelocationFeedback && game.circleRelocationFeedback.active) {
-        game.circleRelocationFeedback.timer--;
-        if (game.circleRelocationFeedback.timer <= 0) {
-            game.circleRelocationFeedback.active = false;
-        }
-    }
-    
-    // Update speech timeout when waiting for voice input
-    if (game.speechRecognition.waitingForSpeech) {
-        game.speechRecognition.timeoutTimer++;
-        
-        // Check for timeout (no voice detected within time window)
-        if (game.speechRecognition.timeoutTimer >= game.speechRecognition.timeoutDuration) {
-            executeFailurePath('timeout', '', game.alphabetPrompt.currentLetter);
-        }
-    }
-    
-    // Update alphabet prompt system
-    updateAlphabetPrompt();
+    // Update UI feedback systems
+    updateUIFeedbackSystems();
     
     // AI Coach Analysis
     if (game.aiEnabled && frameCount % 60 === 0) { // Every second
@@ -833,19 +958,7 @@ function update() {
     }
 }
 
-// Alphabet prompt system - only changes on correct speech input
-function updateAlphabetPrompt() {
-    // Alphabet only changes when user speaks correct letter
-    // Automatic changing is disabled for voice-verified learning
-    
-    // Keep timer running for progress bar display (but don't change letter)
-    game.alphabetPrompt.changeTimer++;
-    
-    // Reset timer to prevent overflow (but don't change letter)
-    if (game.alphabetPrompt.changeTimer >= game.alphabetPrompt.changeInterval) {
-        game.alphabetPrompt.changeTimer = 0;
-    }
-}
+
 
 // Safe Zone collision detection system with touch event detection
 function updateSafeZoneStatus() {
@@ -873,7 +986,7 @@ function updateSafeZoneStatus() {
         game.dangerZone.active = false; // Boundary is still acceptable
     }
     
-    // CIRCLE TOUCH EVENT DETECTION WITH RESET LOGIC
+    // CIRCLE TOUCH EVENT DETECTION
     // Count only when entering the circle (outside → inside/boundary), not while staying
     const isEnteringCircle = (
         (game.previousZoneStatus === 'outside') && 
@@ -885,38 +998,15 @@ function updateSafeZoneStatus() {
     const canRegisterTouch = timeSinceLastTouch >= game.touchDebounceDelay;
     
     if (isEnteringCircle && canRegisterTouch) {
-        // Check if player must exit and re-enter due to previous attempt
-        if (game.speechRecognition.mustExitAndReenter) {
-            console.log(`🔒 Must exit and re-enter circle after previous attempt`);
-            return; // Block entry until they exit first
-        }
-        
         game.touchCounter++;
         game.lastTouchTime = frameCount;
         
-        // Mark that player is in circle for speech recognition
-        game.speechRecognition.isInCircle = true;
-        game.speechRecognition.waitingForSpeech = true;
-        game.speechRecognition.timeoutTimer = 0; // Start timeout countdown
-        game.speechRecognition.attemptProcessed = false; // Reset attempt lock
+        console.log(`🎯 CIRCLE ENTERED! Touch count: ${game.touchCounter}`);
         
-        console.log(`🎯 CIRCLE ENTERED! Say "${game.alphabetPrompt.currentLetter}" out loud! (5 second window)`);
-        
-        // Check if we already heard the correct letter
-        checkLetterMatch();
-        
-        // Visual feedback for circle entry (not full success yet)
+        // Visual feedback for circle entry
         triggerTouchFeedback();
     } else if (isEnteringCircle && !canRegisterTouch) {
         console.log(`⏱️ TOUCH DEBOUNCED: Too rapid (${timeSinceLastTouch}/${game.touchDebounceDelay} frames)`);
-    }
-    
-    // Reset speech state when leaving circle
-    if (game.previousZoneStatus !== 'outside' && game.zoneStatus === 'outside') {
-        game.speechRecognition.isInCircle = false;
-        game.speechRecognition.waitingForSpeech = false;
-        game.speechRecognition.mustExitAndReenter = false; // Reset lock when exiting
-        console.log(`🔓 Exited circle - lock reset, can re-enter for new attempt`);
     }
     
     // RESET LOGIC: Leaving circle doesn't reset anything
@@ -966,8 +1056,8 @@ function triggerTouchFeedback() {
         "Perfect entry! Speak clearly now",
         "Great movement! Time to say the letter",
         "Excellent! Ready for voice input",
-        `In position for letter ${game.alphabetPrompt.currentLetter}!`,
-        `Ready to hear letter ${game.alphabetPrompt.currentLetter}!`
+        `In position for letter ${AlphabetController.getCurrentLetter()}!`,
+        `Ready to hear letter ${AlphabetController.getCurrentLetter()}!`
     ];
     const randomMessage = touchMessages[Math.floor(Math.random() * touchMessages.length)];
     aiThoughts.push(`🎯 ${randomMessage}`);
@@ -1018,11 +1108,13 @@ function triggerGameOver(reason) {
     game.gameOver.active = true;
     game.gameOver.reason = reason;
     game.gameOver.finalScore = game.score;
-    game.gameOver.finalSuccesses = game.successCount;
-    game.running = false;
+    game.gameOver.finalTouches = game.touchCounter;
+    
+    // Use new state management system
+    GameStateManager.transitionTo('gameover', frameCount);
     
     console.log('🚨 GAME OVER:', reason);
-    console.log(`Final Score: ${game.gameOver.finalScore}, Successes: ${game.gameOver.finalSuccesses}`);
+    console.log(`Final Score: ${game.gameOver.finalScore}, Touches: ${game.gameOver.finalTouches}`);
 }
 
 // Trigger danger zone warning with visual feedback
@@ -1032,6 +1124,35 @@ function triggerDangerZone(warningMessage) {
         game.dangerZone.flashTimer = game.dangerZone.flashDuration;
         game.dangerZone.warningText = warningMessage;
         console.log('🚨 DANGER ZONE ACTIVATED:', warningMessage);
+    }
+}
+
+// Update UI feedback systems
+function updateUIFeedbackSystems() {
+    // Update state transition feedback
+    if (game.controls.stateTransition.active) {
+        game.controls.stateTransition.timer--;
+        if (game.controls.stateTransition.timer <= 0) {
+            game.controls.stateTransition.active = false;
+            game.controls.stateTransition.fromState = null;
+            game.controls.stateTransition.toState = null;
+            game.controls.stateTransition.message = '';
+        }
+    }
+
+    // Update input feedback
+    if (game.controls.inputFeedback.active) {
+        game.controls.inputFeedback.timer--;
+        if (game.controls.inputFeedback.timer <= 0) {
+            game.controls.inputFeedback.active = false;
+            game.controls.inputFeedback.action = null;
+            game.controls.inputFeedback.message = '';
+        }
+    }
+
+    // Update control instruction fade timer
+    if (game.controls.fadeTimer > 0) {
+        game.controls.fadeTimer--;
     }
 }
 
@@ -1142,7 +1263,7 @@ function aiCoachAnalysis() {
             "Nice control – continue navigating",
             "Smooth movement – you're learning well",
             "Great technique – keep it up",
-            `Focus on letter ${game.alphabetPrompt.currentLetter} while moving`,
+            `Focus on letter ${AlphabetController.getCurrentLetter()} while moving`,
             "Excellent multitasking – reading and moving!"
         ];
         coachMessage = generalMessages[Math.floor(Math.random() * generalMessages.length)];
@@ -1199,65 +1320,7 @@ function render() {
         ctx.fillText(touchText, (canvas.width - textWidth) / 2, game.safeZone.y - 50);
     }
     
-    // Letter Success Feedback (bigger, more prominent)
-    if (game.letterSuccessFeedback && game.letterSuccessFeedback.active) {
-        const progress = 1 - (game.letterSuccessFeedback.timer / 90);
-        const alpha = 1 - progress;
-        const scale = 1 + (progress * 1.0);
-        
-        ctx.strokeStyle = `rgba(255, 255, 0, ${alpha})`;
-        ctx.lineWidth = 6;
-        ctx.beginPath();
-        ctx.arc(game.safeZone.x, game.safeZone.y, game.safeZone.radius * scale, 0, 2 * Math.PI);
-        ctx.stroke();
-        
-        // Success message
-        ctx.fillStyle = `rgba(255, 255, 0, ${alpha})`;
-        ctx.font = 'bold 32px Arial';
-        ctx.textAlign = 'center';
-        const successText = '🎉 LETTER + TOUCH SUCCESS! +5 POINTS!';
-        ctx.fillText(successText, canvas.width / 2, game.safeZone.y - 80);
-        ctx.textAlign = 'left';
-    }
-    
-    // Wrong Letter Feedback (encouraging, child-friendly)
-    if (game.wrongLetterFeedback && game.wrongLetterFeedback.active) {
-        const alpha = game.wrongLetterFeedback.timer / 120;
-        
-        ctx.fillStyle = `rgba(255, 150, 100, ${alpha})`;
-        ctx.font = 'bold 20px Arial';
-        ctx.textAlign = 'center';
-        
-        // Show encouraging message instead of harsh correction
-        ctx.fillText(game.wrongLetterFeedback.message, canvas.width / 2, game.safeZone.y + 150);
-        
-        // Smaller, gentler correction below
-        ctx.fillStyle = `rgba(255, 200, 150, ${alpha * 0.8})`;
-        ctx.font = '16px Arial';
-        const hintText = `(You said "${game.wrongLetterFeedback.heardLetter}" — try "${game.wrongLetterFeedback.targetLetter}")`;
-        ctx.fillText(hintText, canvas.width / 2, game.safeZone.y + 175);
-        
-        ctx.textAlign = 'left';
-    }
-    
-    // Timeout Feedback (encouraging voice prompt)
-    if (game.timeoutFeedback && game.timeoutFeedback.active) {
-        const alpha = game.timeoutFeedback.timer / 120;
-        
-        ctx.fillStyle = `rgba(100, 150, 255, ${alpha})`;
-        ctx.font = 'bold 20px Arial';
-        ctx.textAlign = 'center';
-        
-        ctx.fillText(game.timeoutFeedback.message, canvas.width / 2, game.safeZone.y + 150);
-        
-        // Gentle reminder
-        ctx.fillStyle = `rgba(150, 200, 255, ${alpha * 0.8})`;
-        ctx.font = '16px Arial';
-        const reminderText = `(Say "${game.timeoutFeedback.targetLetter}" out loud)`;
-        ctx.fillText(reminderText, canvas.width / 2, game.safeZone.y + 175);
-        
-        ctx.textAlign = 'left';
-    }
+
     
     // Circle Relocation Animation
     if (game.circleRelocationFeedback && game.circleRelocationFeedback.active) {
@@ -1345,55 +1408,10 @@ function render() {
     ctx.font = '20px Arial';
     ctx.fillText(`Score: ${game.score}`, canvas.width - 120, 30);
     
-    // Success Counter (Letter + Touch combinations)
+    // Touch Counter
     ctx.fillStyle = '#ffff00';
     ctx.font = 'bold 24px Arial';
-    ctx.fillText(`Successes: ${game.successCount}`, canvas.width - 200, 60);
-    
-    // Removed Circle Touches and Zone displays for cleaner UI focused on multi-modal learning
-    
-    // Microphone Status Indicator (top-left corner)
-    ctx.fillStyle = game.speechRecognition.isListening ? '#00ff00' : '#ff6600';
-    ctx.font = 'bold 16px Arial';
-    const micStatus = game.speechRecognition.isListening ? '🎤 Listening...' : '🎤 Click to start voice';
-    ctx.fillText(micStatus, 10, 25);
-    
-    // Add click instruction if not listening
-    if (!game.speechRecognition.isListening) {
-        ctx.fillStyle = '#ffaa00';
-        ctx.font = '12px Arial';
-        ctx.fillText('(Click anywhere to enable voice)', 10, 40);
-    }
-    
-    // Speech Status Indicator with timeout progress
-    if (game.speechRecognition.waitingForSpeech && !game.speechRecognition.attemptProcessed) {
-        ctx.fillStyle = '#ffff00';
-        ctx.font = 'bold 18px Arial';
-        ctx.fillText(`🎤 Say "${game.alphabetPrompt.currentLetter}"!`, canvas.width - 200, 85);
-        
-        // Timeout progress bar (child-friendly visual cue)
-        const timeProgress = game.speechRecognition.timeoutTimer / game.speechRecognition.timeoutDuration;
-        const barWidth = 150;
-        const barHeight = 4;
-        const barX = canvas.width - 200;
-        const barY = 90;
-        
-        // Background bar
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.fillRect(barX, barY, barWidth, barHeight);
-        
-        // Progress bar (changes color as time runs out)
-        const progressColor = timeProgress < 0.7 ? '#00ff00' : timeProgress < 0.9 ? '#ffff00' : '#ff6600';
-        ctx.fillStyle = progressColor;
-        ctx.fillRect(barX, barY, barWidth * (1 - timeProgress), barHeight);
-    }
-    
-    // Lock Status Indicator (must exit and re-enter)
-    if (game.speechRecognition.mustExitAndReenter && game.speechRecognition.isInCircle) {
-        ctx.fillStyle = '#ffaa00';
-        ctx.font = 'bold 16px Arial';
-        ctx.fillText(`🔒 Exit and re-enter to try again`, canvas.width - 220, 85);
-    }
+    ctx.fillText(`Touches: ${game.touchCounter}`, canvas.width - 200, 60);
     
     // Danger Zone Warning Display (highest priority)
     if (game.dangerZone.active) {
@@ -1425,25 +1443,92 @@ function render() {
         });
     }
     
-    // Alphabet Prompt Display (top center, high contrast)
-    ctx.fillStyle = '#ffff00'; // Bright yellow
-    ctx.font = 'bold 72px Arial';
+    // Enhanced Alphabet Display with Transition Effects
     ctx.textAlign = 'center';
     
-    // Add subtle glow effect for better visibility
-    ctx.shadowColor = '#ffff00';
-    ctx.shadowBlur = 10;
-    
-    ctx.fillText(game.alphabetPrompt.currentLetter, canvas.width / 2, 80);
+    if (game.alphabet.transition.active) {
+        // Transition animation in progress
+        const progress = AlphabetController.getTransitionProgress();
+        const previousLetter = game.alphabet.transition.previousLetter;
+        const newLetter = game.alphabet.transition.newLetter;
+        
+        // Animate previous letter fading out (moving up and fading)
+        const fadeOutAlpha = 1 - progress;
+        const fadeOutY = 80 - (progress * 30); // Move up as it fades
+        const fadeOutScale = 1 - (progress * 0.3); // Shrink as it fades
+        
+        ctx.save();
+        ctx.globalAlpha = fadeOutAlpha;
+        ctx.fillStyle = '#ffff00';
+        ctx.font = `bold ${Math.floor(72 * fadeOutScale)}px Arial`;
+        ctx.shadowColor = '#ffff00';
+        ctx.shadowBlur = 10 * fadeOutAlpha;
+        ctx.fillText(previousLetter, canvas.width / 2, fadeOutY);
+        ctx.restore();
+        
+        // Animate new letter fading in (moving up from below)
+        const fadeInAlpha = progress;
+        const fadeInY = 80 + ((1 - progress) * 30); // Move up as it appears
+        const fadeInScale = 0.7 + (progress * 0.3); // Grow as it appears
+        
+        ctx.save();
+        ctx.globalAlpha = fadeInAlpha;
+        ctx.fillStyle = '#00ff00'; // Green for new letter during transition
+        ctx.font = `bold ${Math.floor(72 * fadeInScale)}px Arial`;
+        ctx.shadowColor = '#00ff00';
+        ctx.shadowBlur = 15 * fadeInAlpha;
+        ctx.fillText(newLetter, canvas.width / 2, fadeInY);
+        ctx.restore();
+        
+        // Transition progress indicator
+        ctx.fillStyle = `rgba(0, 255, 0, ${progress})`;
+        ctx.fillRect(canvas.width / 2 - 60, 95, 120 * progress, 4);
+        
+        // "NEW LETTER!" text during transition
+        if (progress > 0.3) {
+            ctx.save();
+            ctx.globalAlpha = Math.min(1, (progress - 0.3) * 2);
+            ctx.fillStyle = '#00ff00';
+            ctx.font = 'bold 20px Arial';
+            ctx.fillText('NEW LETTER!', canvas.width / 2, 120);
+            ctx.restore();
+        }
+    } else {
+        // Normal alphabet display (no transition)
+        const currentLetter = AlphabetController.getCurrentLetter();
+        
+        ctx.fillStyle = '#ffff00'; // Bright yellow
+        ctx.font = 'bold 72px Arial';
+        
+        // Add subtle glow effect for better visibility
+        ctx.shadowColor = '#ffff00';
+        ctx.shadowBlur = 10;
+        
+        ctx.fillText(currentLetter, canvas.width / 2, 80);
+        
+        // Score progress indicator (shows progress toward next letter change)
+        const scoreProgress = (game.score % game.alphabet.changeThreshold) / game.alphabet.changeThreshold;
+        if (scoreProgress > 0) {
+            ctx.fillStyle = 'rgba(255, 255, 0, 0.4)';
+            ctx.fillRect(canvas.width / 2 - 60, 95, 120 * scoreProgress, 3);
+            
+            // Next letter preview (subtle)
+            if (scoreProgress > 0.7) {
+                const nextIndex = (game.alphabet.currentIndex + 1) % game.alphabet.letters.length;
+                const nextLetter = game.alphabet.letters[nextIndex];
+                ctx.save();
+                ctx.globalAlpha = (scoreProgress - 0.7) * 3; // Fade in when close
+                ctx.fillStyle = '#88ff88';
+                ctx.font = 'bold 16px Arial';
+                ctx.fillText(`Next: ${nextLetter}`, canvas.width / 2, 115);
+                ctx.restore();
+            }
+        }
+    }
     
     // Reset shadow and alignment
     ctx.shadowBlur = 0;
     ctx.textAlign = 'left';
-    
-    // Letter change progress indicator (subtle)
-    const progress = game.alphabetPrompt.changeTimer / game.alphabetPrompt.changeInterval;
-    ctx.fillStyle = 'rgba(255, 255, 0, 0.3)';
-    ctx.fillRect(canvas.width / 2 - 50, 90, 100 * progress, 3);
     
     // Game Over Screen
     if (game.gameOver.active) {
@@ -1466,7 +1551,7 @@ function render() {
         ctx.fillStyle = '#00ff00';
         ctx.font = '20px Arial';
         ctx.fillText(`Final Score: ${game.gameOver.finalScore}`, canvas.width / 2, canvas.height / 2);
-        ctx.fillText(`Letter Successes: ${game.gameOver.finalSuccesses}`, canvas.width / 2, canvas.height / 2 + 30);
+        ctx.fillText(`Circle Touches: ${game.touchCounter}`, canvas.width / 2, canvas.height / 2 + 30);
         
         // Instructions
         ctx.fillStyle = '#ffff00';
@@ -1477,10 +1562,162 @@ function render() {
         return; // Don't render game elements when game over
     }
     
-    // Controls instruction
-    ctx.fillStyle = '#666';
-    ctx.font = '12px Arial';
-    ctx.fillText('Use WASD or Arrow Keys to move | Shift+S or ESC to stop', 10, canvas.height - 40);
-    ctx.fillText('Stay in the green Safe Zone! Use Chrome for voice features.', 10, canvas.height - 25);
-    ctx.fillText('Firefox does not support speech recognition.', 10, canvas.height - 10);
+    // Enhanced Pause Overlay with improved design
+    if (game.state.mode === 'paused') {
+        // Semi-transparent overlay with subtle pattern
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Pause overlay background panel
+        const panelWidth = 400;
+        const panelHeight = 280;
+        const panelX = (canvas.width - panelWidth) / 2;
+        const panelY = (canvas.height - panelHeight) / 2;
+        
+        // Panel background with border
+        ctx.fillStyle = 'rgba(20, 20, 20, 0.9)';
+        ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
+        ctx.strokeStyle = '#ffff00';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
+        
+        // Pause title with glow effect
+        ctx.fillStyle = '#ffff00';
+        ctx.font = 'bold 48px Arial';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#ffff00';
+        ctx.shadowBlur = 15;
+        ctx.fillText('⏸️ PAUSED', canvas.width / 2, panelY + 70);
+        ctx.shadowBlur = 0;
+        
+        // Control instructions section
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 18px Arial';
+        ctx.fillText('Available Controls:', canvas.width / 2, panelY + 110);
+        
+        // Individual control options with icons
+        ctx.fillStyle = '#00ff00';
+        ctx.font = '16px Arial';
+        ctx.fillText('🔄 R - Restart Game', canvas.width / 2, panelY + 140);
+        ctx.fillStyle = '#ff6600';
+        ctx.fillText('⏹️ S - Stop Game', canvas.width / 2, panelY + 165);
+        ctx.fillStyle = '#00ffff';
+        ctx.fillText('🆕 ESC - New Game', canvas.width / 2, panelY + 190);
+        
+        // Current game status
+        ctx.fillStyle = '#888888';
+        ctx.font = '14px Arial';
+        ctx.fillText('─────────────────────────', canvas.width / 2, panelY + 215);
+        
+        ctx.fillStyle = '#ffff00';
+        ctx.font = '14px Arial';
+        ctx.fillText(`Score: ${game.score} | Touches: ${game.touchCounter} | Letter: ${AlphabetController.getCurrentLetter()}`, canvas.width / 2, panelY + 240);
+        
+        // Pause duration display
+        const pauseDuration = Math.floor((frameCount - game.state.pauseStartTime) / 60);
+        ctx.fillStyle = '#888888';
+        ctx.font = '12px Arial';
+        ctx.fillText(`Paused for: ${pauseDuration}s`, canvas.width / 2, panelY + 260);
+        
+        ctx.textAlign = 'left';
+    }
+
+    // Stopped State Overlay
+    if (game.state.mode === 'stopped') {
+        // Semi-transparent overlay
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Stopped title
+        ctx.fillStyle = '#ff6600';
+        ctx.font = 'bold 42px Arial';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#ff6600';
+        ctx.shadowBlur = 10;
+        ctx.fillText('⏹️ GAME STOPPED', canvas.width / 2, canvas.height / 2 - 40);
+        ctx.shadowBlur = 0;
+        
+        // Instructions
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '18px Arial';
+        ctx.fillText('🔄 R: Restart | 🆕 ESC: New Game', canvas.width / 2, canvas.height / 2 + 20);
+        
+        ctx.textAlign = 'left';
+    }
+    
+    // Enhanced Control Instructions Display (consistent across all states)
+    if ((game.controls.visible || game.controls.fadeTimer > 0) && game.state.mode !== 'paused' && game.state.mode !== 'stopped') {
+        const instructions = GameStateManager.getCurrentInstructions();
+        const alpha = game.controls.fadeTimer > 0 ? Math.min(1, game.controls.fadeTimer / 60) : 0.7;
+        
+        // Control instructions background
+        const instructionWidth = ctx.measureText(instructions).width + 20;
+        ctx.fillStyle = `rgba(0, 0, 0, ${alpha * 0.6})`;
+        ctx.fillRect(5, canvas.height - 65, instructionWidth, 60);
+        
+        // Main control instructions
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.font = 'bold 14px Arial';
+        ctx.fillText(instructions, 10, canvas.height - 40);
+        
+        // Movement instructions (only during gameplay)
+        if (game.state.mode === 'playing') {
+            ctx.fillStyle = `rgba(200, 200, 200, ${alpha * 0.8})`;
+            ctx.font = '12px Arial';
+            ctx.fillText('Move: WASD or Arrow Keys', 10, canvas.height - 25);
+        }
+        
+        // Game objective
+        ctx.fillStyle = `rgba(150, 150, 150, ${alpha * 0.6})`;
+        ctx.font = '11px Arial';
+        ctx.fillText('Collect targets to score! Alphabet changes every 5 points.', 10, canvas.height - 10);
+    }
+    
+    // State Transition Feedback (large center display)
+    if (game.controls.stateTransition.active) {
+        const progress = 1 - (game.controls.stateTransition.timer / game.controls.stateTransition.duration);
+        const alpha = progress < 0.8 ? 1 : (1 - progress) * 5; // Fade out in last 20%
+        const scale = 0.8 + (progress * 0.2); // Grow slightly as it appears
+        
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#00ffff';
+        ctx.font = `bold ${Math.floor(32 * scale)}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#00ffff';
+        ctx.shadowBlur = 20;
+        
+        // Background for better visibility
+        const textWidth = ctx.measureText(game.controls.stateTransition.message).width;
+        ctx.globalAlpha = alpha * 0.8;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect((canvas.width - textWidth) / 2 - 20, canvas.height / 2 - 50, textWidth + 40, 60);
+        
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#00ffff';
+        ctx.fillText(game.controls.stateTransition.message, canvas.width / 2, canvas.height / 2 - 20);
+        
+        ctx.restore();
+        ctx.textAlign = 'left';
+    }
+    
+    // Control Input Feedback (immediate response to key presses)
+    if (game.controls.inputFeedback.active) {
+        const progress = 1 - (game.controls.inputFeedback.timer / game.controls.inputFeedback.duration);
+        const alpha = progress < 0.7 ? 1 : (1 - progress) * 3.33; // Fade out in last 30%
+        const yOffset = progress * 30; // Move up as it fades
+        
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = game.controls.inputFeedback.color;
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = game.controls.inputFeedback.color;
+        ctx.shadowBlur = 15;
+        
+        ctx.fillText(game.controls.inputFeedback.message, canvas.width / 2, canvas.height / 2 + 100 - yOffset);
+        
+        ctx.restore();
+        ctx.textAlign = 'left';
+    }
 }
